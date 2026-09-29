@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UserRole } from "@/lib/mock-platform-data";
+import type { UserRole } from "@/lib/roles";
 
 export type FeatureLink = { href: string; label: string };
 

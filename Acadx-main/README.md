@@ -13,13 +13,14 @@ The AI service supports optional PaddleOCR, heuristic classification and extract
 
 ## Local verification
 
-From the repository root:
+From this application directory, install each package with `npm run setup:node` and create the AI virtual environment using [Phase 1 setup instructions](PHASE1.md). Then:
 
 ```powershell
 npm test
+npm run check
 ```
 
-Frontend build/lint, Prisma checks, and individual backend build commands are documented in each project. See [Core implementation status](acadshield-core/docs/IMPLEMENTATION_STATUS.md) and [AI service notes](acadshield-trust/ai-service/README.md).
+See [Phase 1 implementation and handoff](PHASE1.md) for the fixes, affected files, independent test commands, upload reconciliation, configuration requirements, and remaining risks. The root runner executes every suite and summarizes failures. See also [Core implementation status](acadshield-core/docs/IMPLEMENTATION_STATUS.md) and [AI service notes](acadshield-trust/ai-service/README.md).
 
 ## External configuration
 

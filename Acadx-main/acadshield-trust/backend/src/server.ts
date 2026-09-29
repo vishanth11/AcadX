@@ -40,7 +40,7 @@ function requestCompanyId(req: Request): string | null {
   const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? cookie;
   if (!secret || secret.length < 32 || !token) return null;
   try {
-    const claims = jwt.verify(token, secret, { issuer: "acadshield-core" }) as jwt.JwtPayload;
+    const claims = jwt.verify(token, secret, { issuer: "acadshield-core", algorithms: ["HS256"] }) as jwt.JwtPayload;
     return claims.role === "COMPANY" && typeof claims.companyId === "string" ? claims.companyId : null;
   } catch {
     return null;
@@ -48,6 +48,7 @@ function requestCompanyId(req: Request): string | null {
 }
 
 async function authenticateCompany(req: Request, res: Response, scope: string): Promise<{ companyId: string; apiKeyId?: string } | null> {
+  res.set("Cache-Control", "no-store");
   const sessionCompanyId = requestCompanyId(req);
   const hasSessionCookie = req.header("cookie")?.includes("acadshield_session=") ?? false;
   if (sessionCompanyId) {
@@ -57,6 +58,21 @@ async function authenticateCompany(req: Request, res: Response, scope: string): 
         res.status(403).json({ error: "INVALID_REQUEST_ORIGIN" });
         return null;
       }
+    }
+    const coreUrl = process.env.PROJECT_A_API_URL;
+    if (!coreUrl) { res.status(503).json({ error: "SESSION_VALIDATION_UNAVAILABLE" }); return null; }
+    try {
+      const response = await axios.get(`${coreUrl.replace(/\/$/, "")}/auth/session`, {
+        headers: { ...(req.header("authorization") ? { Authorization: req.header("authorization") } : { Cookie: req.header("cookie") }) },
+        timeout: Number(process.env.PROJECT_A_TIMEOUT_MS || 4000),
+      });
+      if (response.data.user?.role !== "COMPANY" || response.data.user?.companyId !== sessionCompanyId) {
+        res.status(401).json({ error: "SESSION_REVOKED" }); return null;
+      }
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      res.status(status === 401 || status === 403 ? 401 : 503).json({ error: status === 401 || status === 403 ? "SESSION_REVOKED" : "SESSION_VALIDATION_UNAVAILABLE" });
+      return null;
     }
     return { companyId: sessionCompanyId };
   }
@@ -76,23 +92,42 @@ async function authenticateCompany(req: Request, res: Response, scope: string): 
     res.status(403).json({ error: "INSUFFICIENT_API_KEY_SCOPE", requiredScope: scope });
     return null;
   }
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  if (row.quotaResetAt < startOfDay) {
-    await prisma.companyApiKey.updateMany({ where: { id: row.id, quotaResetAt: { lt: startOfDay } }, data: { usedToday: 0, quotaResetAt: startOfDay } });
-  } else if (row.usedToday >= row.dailyQuota) {
-    res.status(429).json({ error: "DAILY_QUOTA_EXCEEDED", dailyQuota: row.dailyQuota });
-    return null;
+  if (!process.env.PROJECT_A_API_URL || !process.env.PROJECT_A_INTERNAL_API_KEY) {
+    res.status(503).json({ error: "COMPANY_VALIDATION_UNAVAILABLE" }); return null;
   }
-  const consumed = await prisma.companyApiKey.updateMany({
-    where: { id: row.id, status: "ACTIVE", usedToday: { lt: row.dailyQuota } },
-    data: { usedToday: { increment: 1 }, lastUsedAt: new Date() },
-  });
-  if (consumed.count !== 1) {
-    res.status(429).json({ error: "DAILY_QUOTA_EXCEEDED", dailyQuota: row.dailyQuota });
+  try {
+    const response = await axios.get(`${process.env.PROJECT_A_API_URL.replace(/\/$/, "")}/internal/companies/${encodeURIComponent(row.companyId)}/status`, {
+      headers: { "X-API-Key": process.env.PROJECT_A_INTERNAL_API_KEY }, timeout: Number(process.env.PROJECT_A_TIMEOUT_MS || 4000),
+    });
+    if (response.data.companyId !== row.companyId || response.data.status !== "ACTIVE") {
+      res.status(403).json({ error: "COMPANY_NOT_ACTIVE" }); return null;
+    }
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    res.status(status === 403 || status === 404 ? 403 : 503).json({ error: status === 403 || status === 404 ? "COMPANY_NOT_ACTIVE" : "COMPANY_VALIDATION_UNAVAILABLE" });
     return null;
   }
   return { companyId: row.companyId, apiKeyId: row.id };
+}
+
+async function consumeVerificationQuota(apiKeyId: string | undefined, res: Response): Promise<boolean> {
+  if (!apiKeyId) return true;
+  // PostgreSQL locks the row and rechecks this predicate after concurrent updates.
+  // Reset and charge in one statement, using the database clock in UTC.
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    UPDATE "CompanyApiKey"
+    SET "usedToday" = CASE WHEN "quotaResetAt" < date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          THEN 1 ELSE "usedToday" + 1 END,
+        "quotaResetAt" = date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+        "lastUsedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+    WHERE "id" = ${apiKeyId}::uuid AND "status" = 'ACTIVE'
+      AND ("expiresAt" IS NULL OR "expiresAt" > CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+      AND "dailyQuota" > 0
+      AND ("quotaResetAt" < date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'UTC') OR "usedToday" < "dailyQuota")
+    RETURNING "id"`;
+  if (rows.length) return true;
+  res.status(429).json({ error: "DAILY_QUOTA_EXCEEDED" });
+  return false;
 }
 
 app.get("/health", (_req, res) => res.json({ status: "UP", service: "acadshield-trust-api" }));
@@ -126,6 +161,7 @@ app.post(`${apiPrefix}/verify/credential`, limiter, upload.single("file"), async
       res.status(503).json({ error: "CREDENTIAL_PROVIDER_NOT_CONFIGURED", decision: "SOURCE_UNAVAILABLE" });
       return;
     }
+    if (!await consumeVerificationQuota(company.apiKeyId, res)) return;
     let source: Record<string, unknown>;
     try {
       const response = await axios.post(
@@ -191,11 +227,24 @@ app.get(`${apiPrefix}/verifications`, async (req, res, next) => {
   try {
     const company = await authenticateCompany(req, res, "verification:read");
     if (!company) return;
-    const rows = await prisma.verificationRecord.findMany({ where: { companyId: company.companyId }, orderBy: { createdAt: "desc" }, take: 100 });
-    res.json({ verifications: rows });
+    const cursor = req.query.cursor;
+    if (cursor !== undefined && (typeof cursor !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))) { res.status(400).json({ error: "INVALID_PAGINATION" }); return; }
+    const rows = await prisma.verificationRecord.findMany({ where: { companyId: company.companyId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 101, ...(cursor ? { cursor: { id: String(cursor) }, skip: 1 } : {}) });
+    res.json({ verifications: rows.slice(0, 100), nextCursor: rows.length > 100 ? rows[99].id : null, limit: 100 });
   } catch (error) {
     next(error);
   }
+});
+
+app.get(`${apiPrefix}/reports/:id`, async (req, res, next) => {
+  try {
+    const company = await authenticateCompany(req, res, "verification:read");
+    if (!company) return;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id)) { res.status(404).json({ error: "REPORT_NOT_FOUND" }); return; }
+    const row = await prisma.verificationRecord.findFirst({ where: { id: req.params.id, companyId: company.companyId }, select: { id: true, credentialId: true, decision: true, submittedSha256: true, sourceEvidence: true, aiEvidence: true, createdAt: true } });
+    if (!row) { res.status(404).json({ error: "REPORT_NOT_FOUND" }); return; }
+    res.set("Content-Disposition", `attachment; filename="verification-${row.id}.json"`).json({ schemaVersion: "1.0", generatedAt: new Date().toISOString(), verification: row, note: "Historical result, not a current validity guarantee. AI evidence is advisory." });
+  } catch (error) { next(error); }
 });
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

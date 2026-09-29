@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import DemoDataBanner from "@/components/DemoDataBanner";
 
 export const metadata: Metadata = {
   title: "ACADSHIELD X — Digital Trust Infrastructure for Education & Employment",
@@ -21,7 +20,6 @@ export default function RootLayout({
         <meta name="theme-color" content="#FAF7F2" />
       </head>
       <body className="bg-canvas-texture min-h-screen text-[#0B251D] antialiased selection:bg-[#E5B25D] selection:text-[#0B251D]">
-        <DemoDataBanner />
         {children}
       </body>
     </html>

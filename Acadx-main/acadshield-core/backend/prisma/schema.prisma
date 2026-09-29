@@ -85,6 +85,8 @@ model User {
   status         AccountStatus @default(PENDING)
   institutionId  String?      @db.Uuid
   companyId      String?      @db.Uuid
+  subjectReference String?
+  shares         ShareGrant[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   institution    Institution? @relation(fields: [institutionId], references: [id], onDelete: Restrict)
@@ -93,6 +95,40 @@ model User {
 
   @@index([institutionId, role])
   @@index([companyId, role])
+  @@unique([institutionId, subjectReference])
+}
+
+model ShareGrant {
+  id            String   @id @default(uuid()) @db.Uuid
+  ownerId       String   @db.Uuid
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  tokenHash     String   @unique @db.Char(64)
+  credentialIds String[] @db.Uuid
+  purpose       String
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime @default(now())
+  @@index([ownerId, createdAt])
+}
+
+model CredentialOperation {
+  id              String   @id @default(uuid()) @db.Uuid
+  credentialId    String   @db.Uuid
+  credential      Credential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  institutionId   String   @db.Uuid
+  actorId         String   @db.Uuid
+  kind            String
+  status          String   @default("PREPARED")
+  transactionHash String?
+  rawTransaction  String
+  chainId         Int
+  signerAddress   String
+  nonce           Int
+  details         Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([institutionId, status])
+  @@unique([chainId, signerAddress, nonce])
 }
 
 model AcademicDocument {
@@ -123,6 +159,9 @@ model AcademicDocument {
 }
 
 model Credential {
+  issuanceKey           String?          @db.Uuid
+  issuanceRequestHash   String?          @db.Char(64)
+  operations            CredentialOperation[]
   id                    String           @id @default(uuid()) @db.Uuid
   institutionId         String           @db.Uuid
   documentId            String?          @db.Uuid
@@ -155,6 +194,7 @@ model Credential {
   verifications         Verification[]
 
   @@unique([chainId, contractAddress, tokenId])
+  @@unique([institutionId, issuanceKey])
   @@index([institutionId, status])
   @@index([credentialSha256])
 }

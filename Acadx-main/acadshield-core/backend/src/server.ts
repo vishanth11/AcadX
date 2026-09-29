@@ -16,6 +16,12 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { decideVerification } from "./verification-decision";
 import { compareHolderDocuments } from "./cross-document";
 import { configuredSourceProvider } from "./providers/source-provider";
+import { registerRegistryRoutes } from "./registry-routes";
+import { protectDocument, scanDocument } from "./upload-protection";
+import { registerSharingRoutes } from "./sharing-routes";
+import { registerReportRoutes } from "./report-routes";
+import { prepareOperation, settleOperation } from "./credential-operations";
+import { apiContract } from "./api-contract";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -124,7 +130,7 @@ function configuredJwtSecret(): string | undefined {
 }
 
 function requireSession(...roles: SessionRole[]) {
-  return (req: SessionRequest, res: Response, next: NextFunction): void => {
+  return async (req: SessionRequest, res: Response, next: NextFunction): Promise<void> => {
     const secret = configuredJwtSecret();
     if (!secret) {
       res.status(503).json({ error: "AUTHENTICATION_NOT_CONFIGURED" });
@@ -144,7 +150,7 @@ function requireSession(...roles: SessionRole[]) {
       return;
     }
     try {
-      const payload = jwt.verify(token, secret) as jwt.JwtPayload;
+      const payload = jwt.verify(token, secret, { algorithms: ["HS256"], issuer: "acadshield-core" }) as jwt.JwtPayload;
       const role = payload.role as SessionRole;
       if (typeof payload.sub !== "string" || !["ADMIN", "UNIVERSITY", "COMPANY", "STUDENT"].includes(role)) {
         res.status(401).json({ error: "INVALID_SESSION" });
@@ -154,10 +160,19 @@ function requireSession(...roles: SessionRole[]) {
         res.status(403).json({ error: "FORBIDDEN" });
         return;
       }
-      req.session = { userId: payload.sub, role, institutionId: payload.institutionId, companyId: payload.companyId };
+      const user = await prisma.user.findUnique({ where: { id: payload.sub }, include: { institution: true, company: true } });
+      if (!user || user.status !== "ACTIVE" || user.role !== role ||
+          (["UNIVERSITY", "STUDENT"].includes(role) && (!user.institution || user.institution.status !== "ACTIVE")) ||
+          (role === "COMPANY" && (!user.company || user.company.status !== "ACTIVE"))) {
+        res.status(401).json({ error: "SESSION_REVOKED" });
+        return;
+      }
+      req.session = { userId: user.id, role, institutionId: user.institutionId ?? undefined, companyId: user.companyId ?? undefined };
+      res.set("Cache-Control", "no-store");
       next();
-    } catch {
-      res.status(401).json({ error: "INVALID_SESSION" });
+    } catch (error) {
+      if (error instanceof jwt.JsonWebTokenError) res.status(401).json({ error: "INVALID_SESSION" });
+      else next(error);
     }
   };
 }
@@ -193,6 +208,27 @@ function verifyCredentialJws(token: string | null, expectedIssuer: string): "VER
 }
 
 app.get("/health", (_req, res) => res.json({ status: "UP", service: "acadshield-core-api" }));
+app.get(`${apiPrefix}/openapi.json`, (_req, res) => res.json(apiContract));
+registerRegistryRoutes(app, prisma, requireSession("ADMIN", "UNIVERSITY"));
+registerSharingRoutes(app, prisma, requireSession("STUDENT"), requireSession("UNIVERSITY"));
+registerReportRoutes(app, prisma, requireSession("COMPANY"));
+app.get(`${apiPrefix}/features/:feature`, (req, res) => {
+  const features: Record<string, string> = {
+    students: "Student profiles and identity enrollment are not available.",
+    sharing: "Consented passport sharing is not available.",
+    candidates: "Candidate and employee records are not available.",
+    analytics: "Aggregate analytics are not available. Use the registry for recorded activity.",
+    security: "Security operations metrics are not available.",
+    api: "API keys are provisioned by an administrator; self-service key management is not available.",
+    usage: "Billing and usage reports are not available.",
+  };
+  const message = features[req.params.feature];
+  if (!message) { res.status(404).json({ error: "FEATURE_NOT_FOUND" }); return; }
+  res.json({ records: [], unavailable: message });
+});
+app.get(`${apiPrefix}/auth/session`, requireSession(), (req: SessionRequest, res) => {
+  res.set("Cache-Control", "no-store").json({ user: req.session });
+});
 app.get("/ready", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -344,9 +380,11 @@ app.post(`${apiPrefix}/auth/login`, loginLimiter, async (req, res, next) => {
     return;
   }
   try {
-    const user = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
+    const user = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() }, include: { institution: true, company: true } });
     const passwordMatches = user ? await bcrypt.compare(parsed.data.password, user.passwordHash) : false;
-    if (!user || !passwordMatches || user.status !== "ACTIVE") {
+    if (!user || !passwordMatches || user.status !== "ACTIVE" ||
+        (["UNIVERSITY", "STUDENT"].includes(user.role) && user.institution?.status !== "ACTIVE") ||
+        (user.role === "COMPANY" && user.company?.status !== "ACTIVE")) {
       res.status(401).json({ error: "INVALID_CREDENTIALS" });
       return;
     }
@@ -568,12 +606,20 @@ app.post(`${apiPrefix}/documents`, requireSession("UNIVERSITY"), uploadLimiter, 
     res.status(400).json({ error: "INVALID_DOCUMENT_METADATA", details: metadata.error.flatten() });
     return;
   }
+  let uploadedPath: string | undefined;
+  let uploadedId: string | undefined;
   try {
+    const malwareScan = await scanDocument(req.file.buffer);
+    const protectedBytes = protectDocument(req.file.buffer);
     const documentId = crypto.randomUUID();
+    uploadedId = documentId;
     const safeName = path.basename(req.file.originalname).replace(/[\r\n\0]/g, "_").slice(0, 180) || "document";
     const destination = path.join(storageRoot, institutionId, `${documentId}.bin`);
     await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
-    await fs.writeFile(destination, req.file.buffer, { flag: "wx", mode: 0o600 });
+    const fileHandle = await fs.open(destination, "wx", 0o600);
+    uploadedPath = destination;
+    try { await fileHandle.writeFile(protectedBytes); }
+    finally { await fileHandle.close(); }
     const activeTemplate = metadata.data.documentType ? await prisma.institutionTemplate.findFirst({
       where: { institutionId, documentType: metadata.data.documentType, active: true },
       orderBy: { version: "desc" },
@@ -618,7 +664,7 @@ app.post(`${apiPrefix}/documents`, requireSession("UNIVERSITY"), uploadLimiter, 
         status: "REVIEW_REQUIRED",
         ocrEvidence: (analysis.ocr as object | undefined) ?? undefined,
         extractedFields: (analysis.fieldExtraction as object | undefined) ?? undefined,
-        analysisEvidence: analysis as object,
+        analysisEvidence: { ...analysis, malwareScan, storageEncryption: process.env.DOCUMENT_ENCRYPTION_KEY ? "AES-256-GCM" : "DEV_PLAINTEXT" } as object,
         uploadedById: req.session?.userId,
       },
     });
@@ -626,6 +672,19 @@ app.post(`${apiPrefix}/documents`, requireSession("UNIVERSITY"), uploadLimiter, 
     await prisma.auditLog.create({ data: { actorId: req.session!.userId, action: "DOCUMENT_UPLOADED", entityType: "AcademicDocument", entityId: record.id, details: { fileSha256: digest, byteLength: req.file.size, mediaType, analysisStatus } } });
     res.status(201).json({ documentId: record.id, status: record.status, documentType: record.documentType, holderReference: record.holderReference, template: activeTemplate ? { id: activeTemplate.id, name: activeTemplate.templateName, version: activeTemplate.version } : null, file: { name: safeName, mediaType, sizeBytes: req.file.size, documentSha256: digest, hashAlgorithm: "SHA-256" }, analysis });
   } catch (error) {
+    // A failed response does not prove a failed commit. Never delete a file
+    // referenced by a committed row (including an audit-only failure).
+    if (uploadedPath && uploadedId) {
+      try {
+        const persisted = await prisma.academicDocument.findUnique({ where: { id: uploadedId }, select: { id: true } });
+        if (!persisted) await fs.unlink(uploadedPath);
+      } catch {
+        console.error("Upload cleanup deferred to reconciliation", uploadedId);
+      }
+    }
+    if (error instanceof Error && /^(MALWARE_|DOCUMENT_ENCRYPTION_)/.test(error.message)) {
+      res.status(error.message === "MALWARE_DETECTED" ? 422 : 503).json({ error: error.message }); return;
+    }
     next(error);
   }
 });
@@ -776,6 +835,9 @@ app.post(`${apiPrefix}/credentials`, requireSession("UNIVERSITY"), async (req: S
     res.status(400).json({ error: "INVALID_CREDENTIAL_REQUEST", details: parsed.error.flatten() });
     return;
   }
+  const issuanceKey = req.header("Idempotency-Key");
+  if (!issuanceKey || !uuidPattern.test(issuanceKey)) { res.status(400).json({ error: "IDEMPOTENCY_KEY_REQUIRED" }); return; }
+  const issuanceRequestHash = sha256(JSON.stringify(parsed.data));
   const issuerDid = process.env.VC_ISSUER_DID;
   const keyId = process.env.VC_ISSUER_KEY_ID;
   const privateKey = pemValue(process.env.VC_ISSUER_PRIVATE_KEY_PEM);
@@ -789,6 +851,12 @@ app.post(`${apiPrefix}/credentials`, requireSession("UNIVERSITY"), async (req: S
     return;
   }
   try {
+    const replay = await prisma.credential.findFirst({ where: { institutionId: issuerScope, issuanceKey } });
+    if (replay) {
+      if (replay.issuanceRequestHash !== issuanceRequestHash) { res.status(409).json({ error: "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST" }); return; }
+      res.json({ credentialId: replay.id, status: replay.status, issuerDid: replay.issuerDid, subjectDid: replay.subjectReference, credentialSha256: replay.credentialSha256, supersedesCredentialId: replay.supersedesId,
+        proof: { format: "VC-JWT", algorithm: "ES256", verificationStatus: "SIGNED" }, blockchain: { status: replay.transactionHash ? "RECORDED" : "NOT_RECORDED" }, replayed: true }); return;
+    }
     const institution = await prisma.institution.findUnique({ where: { id: issuerScope } });
     const document = await prisma.academicDocument.findUnique({ where: { id: parsed.data.documentId } });
     if (!institution || institution.status !== "ACTIVE" || !document || document.institutionId !== issuerScope) {
@@ -825,6 +893,9 @@ app.post(`${apiPrefix}/credentials`, requireSession("UNIVERSITY"), async (req: S
     );
     const row = await prisma.$transaction(async (tx) => {
       if (parsed.data.supersedesId) {
+        await tx.$queryRaw`SELECT "id" FROM "Credential" WHERE "id" = ${parsed.data.supersedesId}::uuid FOR UPDATE`;
+        const pending = await tx.credentialOperation.findFirst({ where: { credentialId: parsed.data.supersedesId, status: { in: ["PREPARED", "SUBMITTED"] } } });
+        if (pending) throw new Error(`OPERATION_PENDING:${pending.id}`);
         const previous = await tx.credential.findFirst({ where: { id: parsed.data.supersedesId, institutionId: issuerScope }, include: { versions: { select: { id: true } } } });
         if (!previous || previous.credentialType !== parsed.data.credentialType || previous.subjectReference !== parsed.data.subjectDid) throw new Error("CREDENTIAL_VERSION_PARENT_MISMATCH");
         if (previous.versions.length) throw new Error("CREDENTIAL_VERSION_BRANCH_NOT_ALLOWED");
@@ -838,6 +909,8 @@ app.post(`${apiPrefix}/credentials`, requireSession("UNIVERSITY"), async (req: S
         data: {
           id,
           institutionId: issuerScope,
+          issuanceKey,
+          issuanceRequestHash,
           documentId: document.id,
           credentialType: parsed.data.credentialType,
           subjectReference: parsed.data.subjectDid,
@@ -926,27 +999,11 @@ app.post(`${apiPrefix}/credentials/:credentialId/mint`, requireSession("UNIVERSI
       return;
     }
     const metadataURI = ipfsMetadata?.uri ?? `${verifyBaseUrl.replace(/\/$/, "")}/${encodeURIComponent(row.id)}`;
-    const transaction = await contract.mintCredential(config.recipientAddress, reference, digest, metadataURI);
-    const receipt = await transaction.wait();
-    if (!receipt || receipt.status !== 1) {
-      res.status(502).json({ error: "BLOCKCHAIN_TRANSACTION_NOT_CONFIRMED", transactionHash: transaction.hash });
-      return;
-    }
-    const minted = receipt.logs.map((log: { topics: readonly string[]; data: string }) => {
-      try { return contract.interface.parseLog(log); } catch { return null; }
-    }).find((event: { name?: string } | null) => event?.name === "CredentialMinted");
-    if (!minted || String(minted.args.credentialRef).toLowerCase() !== reference.toLowerCase() || String(minted.args.documentSha256).toLowerCase() !== digest.toLowerCase() || String(minted.args.metadataURI) !== metadataURI) {
-      res.status(502).json({ error: "MINT_EVENT_NOT_FOUND", transactionHash: transaction.hash });
-      return;
-    }
-    const tokenId = BigInt(minted.args.tokenId);
-    const blockNumber = BigInt(receipt.blockNumber);
-    const updated = await prisma.credential.update({
-      where: { id: row.id },
-      data: { chainId: Number(config.chainId), contractAddress: config.contractAddress, tokenId: tokenId.toString(), transactionHash: transaction.hash, metadataCid: ipfsMetadata?.cid ?? null, metadataUri: metadataURI, blockNumber, mintedAt: new Date() },
-    });
-    await prisma.auditLog.create({ data: { actorId: req.session!.userId, action: "CREDENTIAL_MINTED", entityType: "Credential", entityId: row.id, details: { tokenId: tokenId.toString(), transactionHash: transaction.hash, blockNumber: blockNumber.toString(), chainId: Number(config.chainId), contractAddress: config.contractAddress, documentSha256: row.document.documentSha256, metadataCid: ipfsMetadata?.cid ?? null } } });
-    res.status(201).json({ credentialId: updated.id, tokenId: updated.tokenId, transactionHash: updated.transactionHash, blockNumber: updated.blockNumber?.toString(), chainId: updated.chainId, contractAddress: updated.contractAddress, metadataCid: updated.metadataCid, metadataUri: updated.metadataUri, status: "CONFIRMED" });
+    const operation = await prepareOperation(prisma, signer, { credentialId: row.id, institutionId: row.institutionId, actorId: req.session!.userId, kind: "MINT", chainId: Number(config.chainId),
+      details: { contractAddress: config.contractAddress, reference, digest, metadataUri: metadataURI, metadataCid: ipfsMetadata?.cid ?? null, recipient: config.recipientAddress },
+      transaction: await contract.mintCredential.populateTransaction(config.recipientAddress, reference, digest, metadataURI) });
+    const result = await settleOperation(prisma, operation, provider, blockchainAbi, true);
+    res.status(result.status === "CONFIRMED" ? 201 : 202).json(result);
   } catch (error) {
     if (error instanceof Error && error.message === "BLOCKCHAIN_NETWORK_MISMATCH") {
       res.status(503).json({ error: "BLOCKCHAIN_NETWORK_MISMATCH" });
@@ -999,18 +1056,21 @@ app.post(`${apiPrefix}/credentials/:credentialId/revoke`, requireSession("UNIVER
         return;
       }
       if (!record.revoked) {
-        const tx = await contract.revokeCredential(reference);
-        const receipt = await tx.wait();
-        if (!receipt || receipt.status !== 1) {
-          res.status(502).json({ error: "BLOCKCHAIN_REVOCATION_NOT_CONFIRMED", transactionHash: tx.hash, status: "UNCHANGED" });
-          return;
-        }
-        revocationTransaction = tx.hash;
+        const operation = await prepareOperation(prisma, signer, { credentialId: row.id, institutionId: row.institutionId, actorId: req.session!.userId, kind: "REVOKE", chainId: Number(config.chainId), details: { contractAddress: config.contractAddress, reference, reason: parsed.data.reason }, transaction: await contract.revokeCredential.populateTransaction(reference) });
+        const result = await settleOperation(prisma, operation, provider, blockchainAbi, true);
+        res.status(result.status === "CONFIRMED" ? 200 : 202).json(result); return;
       }
     }
     const revokedAt = new Date();
-    const updated = await prisma.credential.update({ where: { id: row.id }, data: { status: "REVOKED", revokedAt, revocationReason: parsed.data.reason } });
-    await prisma.auditLog.create({ data: { actorId: req.session!.userId, action: "CREDENTIAL_REVOKED", entityType: "Credential", entityId: row.id, details: { reason: parsed.data.reason, revokedAt: revokedAt.toISOString(), onChainStatus: row.transactionHash ? "REVOKED" : "NOT_RECORDED", revocationTransaction } } });
+    const updated = await prisma.$transaction(async tx => {
+      // Lock the credential so a concurrent operation cannot begin while it is revoked.
+      await tx.$queryRaw`SELECT "id" FROM "Credential" WHERE "id" = ${row.id}::uuid FOR UPDATE`;
+      const pending = await tx.credentialOperation.findFirst({ where: { credentialId: row.id, status: { in: ["PREPARED", "SUBMITTED"] } } });
+      if (pending) throw new Error(`OPERATION_PENDING:${pending.id}`);
+      const result = await tx.credential.update({ where: { id: row.id }, data: { status: "REVOKED", revokedAt, revocationReason: parsed.data.reason } });
+      await tx.auditLog.create({ data: { actorId: req.session!.userId, action: "CREDENTIAL_REVOKED", entityType: "Credential", entityId: row.id, details: { reason: parsed.data.reason, revokedAt: revokedAt.toISOString(), onChainStatus: row.transactionHash ? "REVOKED" : "NOT_RECORDED", revocationTransaction } } });
+      return result;
+    });
     res.json({ credentialId: updated.id, status: updated.status, revokedAt, blockchain: row.transactionHash ? { status: "REVOKED", transactionHash: revocationTransaction } : { status: "NOT_RECORDED" } });
   } catch (error) {
     next(error);
@@ -1140,6 +1200,15 @@ app.get(`${apiPrefix}/credentials/:credentialId/qr`, requireSession("UNIVERSITY"
   } catch (error) {
     next(error);
   }
+});
+
+app.get(`${apiPrefix}/internal/companies/:companyId/status`, requireInternalService, async (req, res, next) => {
+  if (!uuidPattern.test(req.params.companyId)) { res.status(400).json({ error: "INVALID_COMPANY_ID" }); return; }
+  try {
+    const company = await prisma.company.findUnique({ where: { id: req.params.companyId }, select: { id: true, status: true } });
+    if (!company || company.status !== "ACTIVE") { res.status(403).json({ error: "COMPANY_NOT_ACTIVE" }); return; }
+    res.set("Cache-Control", "no-store").json({ companyId: company.id, status: company.status });
+  } catch (error) { next(error); }
 });
 
 app.post(`${apiPrefix}/internal/verify-credential`, requireInternalService, async (req, res, next) => {
@@ -1315,7 +1384,29 @@ app.get(`${apiPrefix}/company/verifications/:verificationId`, requireSession("CO
   }
 });
 
+app.get(`${apiPrefix}/credential-operations`, requireSession("UNIVERSITY"), async (req: SessionRequest, res, next) => {
+  try {
+    const records = await prisma.credentialOperation.findMany({ where: { institutionId: req.session!.institutionId, status: { in: ["PREPARED", "SUBMITTED"] } }, orderBy: { createdAt: "asc" }, take: 100,
+      select: { id: true, credentialId: true, kind: true, status: true, transactionHash: true, createdAt: true } });
+    res.json({ records, limit: 100 });
+  } catch (error) { next(error); }
+});
+app.post(`${apiPrefix}/credential-operations/:id/reconcile`, requireSession("UNIVERSITY"), async (req: SessionRequest, res, next) => {
+  if (!uuidPattern.test(req.params.id)) { res.status(404).json({ error: "OPERATION_NOT_FOUND" }); return; }
+  try {
+    const operation = await prisma.credentialOperation.findFirst({ where: { id: req.params.id, institutionId: req.session!.institutionId } });
+    if (!operation) { res.status(404).json({ error: "OPERATION_NOT_FOUND" }); return; }
+    const config = blockchainConfig();
+    if (!config || Number(config.chainId) !== operation.chainId) { res.status(503).json({ error: "BLOCKCHAIN_ISSUER_NOT_CONFIGURED" }); return; }
+    const result = await settleOperation(prisma, operation, await blockchainProvider(config), blockchainAbi, true);
+    res.status(result.status === "PENDING" ? 202 : 200).json(result);
+  } catch (error) { next(error); }
+});
+
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (error instanceof Error && error.message.startsWith("OPERATION_PENDING:")) {
+    res.status(409).json({ error: "OPERATION_PENDING", operationId: error.message.split(":")[1] }); return;
+  }
   // Do not leak SQL, credential, or file details through public API responses.
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
     res.status(413).json({ error: "DOCUMENT_TOO_LARGE", maxBytes: maxDocumentBytes });

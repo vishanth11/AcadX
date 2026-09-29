@@ -1,6 +1,13 @@
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { app } from "./server";
+import { PrismaClient } from "@prisma/client";
+jest.mock("@prisma/client", () => {
+  const actual = jest.requireActual("@prisma/client");
+  const client = { user: { findUnique: jest.fn() } };
+  return { ...actual, PrismaClient: jest.fn(() => client) };
+});
+const client = new PrismaClient();
 
 describe("core API safety defaults", () => {
   const previousJwtSecret = process.env.JWT_SECRET;
@@ -11,6 +18,7 @@ describe("core API safety defaults", () => {
   beforeEach(() => {
     delete process.env.JWT_SECRET;
     delete process.env.INTERNAL_SERVICE_API_KEY;
+    (client.user.findUnique as jest.Mock).mockResolvedValue(null);
   });
 
   afterAll(() => {
@@ -42,15 +50,16 @@ describe("core API safety defaults", () => {
     expect(response.body.error).toBe("INTERNAL_SERVICE_NOT_CONFIGURED");
   });
 
-  it("accepts public company registration submissions at the public registration endpoint", async () => {
+  it("validates public registration without touching the database", async () => {
     const response = await request(app).post("/api/v1/companies/register").send({
       name: "Example Corp",
       domain: "example.com",
       administratorEmail: "admin@example.com",
-      initialPassword: "StrongPassword123456",
+      initialPassword: "short",
     });
 
-    expect(response.status).not.toBe(404);
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("INVALID_COMPANY_REQUEST");
   });
 
   it("keeps template, audit, and registry endpoints behind configured sessions", async () => {
@@ -67,7 +76,8 @@ describe("core API safety defaults", () => {
     process.env.JWT_SECRET = secret;
     process.env.CORS_ORIGIN = "http://localhost:3000";
     delete process.env.BLOCKCHAIN_ISSUER_PRIVATE_KEY;
-    const token = jwt.sign({ role: "UNIVERSITY", institutionId: "00000000-0000-4000-8000-000000000002" }, secret, { subject: "00000000-0000-4000-8000-000000000003" });
+    (client.user.findUnique as jest.Mock).mockResolvedValue({ id: "00000000-0000-4000-8000-000000000003", role: "UNIVERSITY", status: "ACTIVE", institutionId: "00000000-0000-4000-8000-000000000002", institution: { status: "ACTIVE" } });
+    const token = jwt.sign({ role: "UNIVERSITY", institutionId: "00000000-0000-4000-8000-000000000002" }, secret, { subject: "00000000-0000-4000-8000-000000000003", issuer: "acadshield-core" });
     const response = await request(app)
       .post("/api/v1/credentials/00000000-0000-4000-8000-000000000001/mint")
       .set("Cookie", `acadshield_session=${token}`)

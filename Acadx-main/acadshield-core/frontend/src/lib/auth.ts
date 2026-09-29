@@ -1,4 +1,4 @@
-type Role = "ADMIN" | "UNIVERSITY" | "COMPANY";
+type Role = "ADMIN" | "UNIVERSITY" | "COMPANY" | "STUDENT";
 
 export async function signIn(email: string, password: string, expectedRole: Role): Promise<void> {
   const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1").replace(/\/$/, "");

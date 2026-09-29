@@ -1,8 +1,9 @@
 ﻿"use client";
 
 import React, { useState } from "react";
-import { CredentialRecord } from "../lib/credentials-data";
+import type { CredentialRecord } from "../lib/credentials-data";
 import { ShieldCheck, AlertTriangle, Clock, XCircle, ExternalLink, Check, Copy, FileText, QrCode } from "lucide-react";
+import { demoEnabled } from "@/lib/demo-mode";
 
 interface VerificationDrawerProps {
   credential: CredentialRecord | null;
@@ -15,7 +16,7 @@ export default function VerificationDrawer({ credential, isOpen, onClose }: Veri
   const [copiedHash, setCopiedHash] = useState(false);
   const [showJsonPayload, setShowJsonPayload] = useState(false);
 
-  if (!isOpen || !credential) return null;
+  if (!demoEnabled || !isOpen || !credential) return null;
 
   const getStatusBadge = () => {
     switch (credential.status) {

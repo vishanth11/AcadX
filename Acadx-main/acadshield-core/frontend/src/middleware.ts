@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
   if (!role) return NextResponse.next();
   const token = request.cookies.get("acadshield_session")?.value;
   if (await validSession(token, process.env.JWT_SECRET, role)) return NextResponse.next();
-  const loginPath = segment === "student" ? "/login" : `/login/${segment}`;
+  const loginPath = `/login/${segment}`;
   const destination = new URL(loginPath, request.url);
   destination.searchParams.set("returnTo", request.nextUrl.pathname);
   const response = NextResponse.redirect(destination);

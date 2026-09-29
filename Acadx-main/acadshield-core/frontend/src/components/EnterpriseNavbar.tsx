@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Shield, Building2, Briefcase, KeyRound, ChevronDown, Check, LogOut, ArrowRight, User } from "lucide-react";
-import { UserRole } from "../lib/mock-platform-data";
+import type { UserRole } from "../lib/roles";
 
 export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole } = {}) {
   const pathname = usePathname();
@@ -44,7 +44,7 @@ export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole
       case "COMPANY":
         return {
           title: "COMPANY · VERIFIER",
-          sub: "Anthropic Inc.",
+          sub: "Company workspace",
           bg: "bg-[#0B251D] text-[#E5B25D]",
           border: "border-[#E5B25D]/40",
           icon: <Briefcase className="w-3.5 h-3.5 text-[#E5B25D]" />
@@ -52,7 +52,7 @@ export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole
       case "STUDENT":
         return {
           title: "STUDENT · CREDENTIAL HOLDER",
-          sub: "Alex Vance (MIT)",
+          sub: "Student workspace",
           bg: "bg-[#0B251D] text-[#FAF7F2]",
           border: "border-[#0B251D]",
           icon: <User className="w-3.5 h-3.5 text-[#E5B25D]" />
@@ -61,7 +61,7 @@ export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole
       default:
         return {
           title: "UNIVERSITY · ISSUER AUTHORITY",
-          sub: "MIT (Verified)",
+          sub: "University workspace",
           bg: "bg-[#0B251D] text-[#FAF7F2]",
           border: "border-[#0B251D]",
           icon: <Building2 className="w-3.5 h-3.5 text-[#E5B25D]" />
@@ -189,7 +189,7 @@ export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole
                   <div className="flex items-center gap-2.5">
                     <Building2 className="w-4 h-4 text-[#C88A32]" />
                     <div>
-                      <div className="font-bold">University (MIT)</div>
+                      <div className="font-bold">University</div>
                       <div className="text-[10px] text-[#0B251D]/60 font-normal">Authoritative Source of Documents</div>
                     </div>
                   </div>
@@ -203,7 +203,7 @@ export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole
                   <div className="flex items-center gap-2.5">
                     <Briefcase className="w-4 h-4 text-[#C88A32]" />
                     <div>
-                      <div className="font-bold">Company (Anthropic)</div>
+                      <div className="font-bold">Company</div>
                       <div className="text-[10px] text-[#0B251D]/60 font-normal">Independent Verifier & Hash Matcher</div>
                     </div>
                   </div>
@@ -232,7 +232,7 @@ export default function EnterpriseNavbar({ activeRole }: { activeRole?: UserRole
                     <User className="w-4 h-4 text-[#0B251D]" />
                     <div>
                       <div className="font-bold">Student Passport</div>
-                      <div className="text-[10px] text-[#0B251D]/60 font-normal">Alex Vance Credentials & Sharing</div>
+                      <div className="text-[10px] text-[#0B251D]/60 font-normal">Student credentials & sharing</div>
                     </div>
                   </div>
                   {currentRole === "STUDENT" && <Check className="w-4 h-4 text-[#0B251D]" />}

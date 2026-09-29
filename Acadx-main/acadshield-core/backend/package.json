@@ -12,6 +12,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:studio": "prisma studio",
+    "uploads:reconcile": "ts-node src/reconcile-uploads.ts",
     "test": "jest --detectOpenHandles --forceExit"
   },
   "dependencies": {

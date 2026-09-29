@@ -2,9 +2,11 @@
 
 import React, { useState } from "react";
 import { Check, Shield, Award, BookOpen, Briefcase, Sparkles, ExternalLink } from "lucide-react";
+import { demoEnabled } from "@/lib/demo-mode";
 
 export default function TrustPassportSection({ onVerifySample }: { onVerifySample: (id: string) => void }) {
   const [activeTab, setActiveTab] = useState<"education" | "certifications" | "skills" | "internships">("education");
+  if (!demoEnabled) return null;
 
   return (
     <section id="passport" className="py-20 border-t border-[#0B251D]/15">

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Upload, CheckCircle2, Shield, Loader2, ArrowRight } from "lucide-react";
+import { demoEnabled } from "@/lib/demo-mode";
 
 export default function IssuerSimulationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [step, setStep] = useState<"form" | "hashing" | "minting" | "success">("form");
@@ -11,7 +12,7 @@ export default function IssuerSimulationModal({ isOpen, onClose }: { isOpen: boo
   const [credentialType, setCredentialType] = useState("DEGREE");
   const [credentialTitle, setCredentialTitle] = useState("Master of Science in Cybersecurity");
 
-  if (!isOpen) return null;
+  if (!demoEnabled || !isOpen) return null;
 
   // Real SHA-256 hash computation in the browser using Web Crypto API
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {

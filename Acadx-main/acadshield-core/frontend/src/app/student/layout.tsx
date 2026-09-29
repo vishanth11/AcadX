@@ -63,11 +63,11 @@ export default function StudentAppLayout({
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-forest/5 border border-forest/10 text-[11px] font-bold text-forest">
             <ShieldCheck className="w-3.5 h-3.5 text-ochre" />
-            MIT EECS • Class of 2026
+            Student workspace
           </div>
           <div className="hidden md:block text-right">
-            <div className="text-xs font-bold text-forest">Alex Vance Morgan</div>
-            <div className="text-[10px] text-forest/50 font-mono">did:acadshield:student:stu_2026_9941</div>
+            <div className="text-xs font-bold text-forest">Student account</div>
+            <div className="text-[10px] text-forest/50 font-mono">Identity enrollment unavailable</div>
           </div>
           <Link
             href="/login"

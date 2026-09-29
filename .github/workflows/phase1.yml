@@ -1,0 +1,74 @@
+name: Independent project checks
+on: [push, pull_request]
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - folder: acadshield-core/backend
+            command: npm run prisma:generate && npm run build && npm test -- --runInBand
+          - folder: acadshield-trust/backend
+            command: npm run prisma:generate && npm run build && npm test -- --runInBand
+          - folder: acadshield-core/frontend
+            command: npm run lint && npm test && npm run build
+          - folder: acadshield-trust/frontend
+            command: npm run build
+          - folder: acadshield-core/contracts
+            command: npm run compile && npm test
+    defaults:
+      run:
+        working-directory: Acadx-main/${{ matrix.folder }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --workspaces=false
+      - run: ${{ matrix.command }}
+        env:
+          CI: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
+      - run: node --test ../../scripts/checks.test.cjs
+        if: matrix.folder == 'acadshield-core/backend'
+  ai:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Acadx-main/acadshield-trust/ai-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt -c requirements-lock.txt
+      - run: python -m pytest -q tests
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acadshield
+          POSTGRES_PASSWORD: integration-only
+          POSTGRES_DB: acadshield_security_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U acadshield -d acadshield_security_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: Acadx-main/acadshield-core/backend
+    env:
+      DATABASE_URL: postgresql://acadshield:integration-only@localhost:5432/acadshield_security_test
+      INTEGRATION_DATABASE_URL: postgresql://acadshield:integration-only@localhost:5432/acadshield_security_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --workspaces=false
+      - run: npm run prisma:generate
+      - run: npm run prisma:deploy
+      - run: npm test -- --runInBand security.integration

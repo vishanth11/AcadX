@@ -42,6 +42,8 @@
   w3cPayload: Record<string, any>;
 }
 
+import { requireDemoMode } from "./demo-mode";
+requireDemoMode();
 export const SAMPLE_CREDENTIALS: Record<string, CredentialRecord> = {
   "cred_valid_degree_001": {
     id: "cred_valid_degree_001",

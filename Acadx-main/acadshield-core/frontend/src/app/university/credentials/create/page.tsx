@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import EnterpriseNavbar from "@/components/EnterpriseNavbar";
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
@@ -27,6 +27,7 @@ export default function CreateCredentialPage() {
   const [minted, setMinted] = useState<MintReceipt | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const issueAttempt = useRef({ payload: "", key: "" });
 
   useEffect(() => {
     let active = true;
@@ -60,21 +61,23 @@ export default function CreateCredentialPage() {
     if (!document || document.status !== "VERIFIED") { setError("Choose a source document that has passed institutional review."); return; }
     setLoading(true); setError(""); setMinted(null);
     try {
-      const response = await fetch(`${apiBase}/credentials`, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = JSON.stringify({
           documentId,
           credentialType,
           ...(supersedesId ? { supersedesId } : {}),
           subjectDid: subjectDid.trim(),
           credentialSubject: { name: holderName.trim(), qualification: qualification.trim(), ...(graduationYear ? { graduationYear: Number(graduationYear) } : {}) },
           ...(expiresOn ? { expiresAt: new Date(`${expiresOn}T00:00:00.000Z`).toISOString() } : {}),
-        }),
+        });
+      if (issueAttempt.current.payload !== payload) issueAttempt.current = { payload, key: crypto.randomUUID() };
+      const response = await fetch(`${apiBase}/credentials`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "Idempotency-Key": issueAttempt.current.key },
+        body: payload,
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) { setError(body.error === "CREDENTIAL_ISSUER_NOT_CONFIGURED" ? "Issuer signing keys are not configured for this institution." : body.error === "DOCUMENT_REVIEW_REQUIRED" ? "The source document must be approved first." : body.error === "CREDENTIAL_VERSION_REQUIRES_ONCHAIN_REVOCATION" ? "Revoke the previous minted credential on-chain before issuing a replacement." : body.error?.startsWith("CREDENTIAL_VERSION_") ? "The selected prior credential cannot be replaced. Check its lifecycle and holder." : "Credential issuance failed. Check issuer configuration and entered details."); return; }
       setIssued(body as IssuedCredential);
-    } catch { setError("Could not reach the credential issuer. No credential was issued."); }
+    } catch { setError("The issuer response was lost. Retry this unchanged form to recover the same issuance; do not reload or create a new request yet."); }
     finally { setLoading(false); }
   }
 
@@ -84,7 +87,8 @@ export default function CreateCredentialPage() {
     try {
       const response = await fetch(`${apiBase}/credentials/${encodeURIComponent(issued.credentialId)}/mint`, { method: "POST", credentials: "include" });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) { setError(body.error === "BLOCKCHAIN_ISSUER_NOT_CONFIGURED" ? "Minting is not configured. The signed credential is issued; no NFT was minted." : body.error === "BLOCKCHAIN_SIGNER_NOT_AUTHORIZED" ? "The configured wallet needs ISSUER_ROLE on the deployed contract." : "Blockchain minting was not confirmed. The signed credential remains available without an NFT."); return; }
+      if (!response.ok) { setError(body.error === "OPERATION_PENDING" ? `Operation ${body.operationId} is pending. Open Blockchain operations to reconcile it.` : body.error === "BLOCKCHAIN_ISSUER_NOT_CONFIGURED" ? "Minting is not configured. The signed credential is issued; no NFT was minted." : body.error === "BLOCKCHAIN_SIGNER_NOT_AUTHORIZED" ? "The configured wallet needs ISSUER_ROLE on the deployed contract." : "Blockchain minting was not confirmed. Check operation history before retrying."); return; }
+      if (response.status === 202 || body.status !== "CONFIRMED") { setError(`Operation ${body.operationId} is ${body.status}. Open Blockchain operations to reconcile it. No confirmation is claimed yet.`); return; }
       setMinted(body as MintReceipt);
     } catch { setError("Could not reach the blockchain service. The credential is issued, but no mint was confirmed."); }
     finally { setLoading(false); }

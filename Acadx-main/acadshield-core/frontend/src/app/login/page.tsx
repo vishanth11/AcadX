@@ -35,14 +35,15 @@ export default function LoginRoleSelectionPage() {
             Sign In to AcadShield X
           </div>
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight headline-shadow font-serif">
-            Select Your Organizational Role
+            Select Your Role
           </h1>
           <p className="text-sm text-forest/75 max-w-xl mx-auto leading-relaxed">
             Verify identities, credentials, and professional records through trusted digital infrastructure. Choose your institutional role to continue.
           </p>
         </div>
 
-        {/* 3 Large Role Cards */}
+        <Link href="/login/student" className="inline-block rounded border border-forest/20 px-6 py-3 font-bold">Student sign in</Link>
+        {/* Organization role cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
           {/* Card 1: University */}
           <div className="bg-white border-2 border-forest/15 hover:border-forest/40 rounded-3xl p-7 shadow-lg flex flex-col justify-between transition hover:-translate-y-1">

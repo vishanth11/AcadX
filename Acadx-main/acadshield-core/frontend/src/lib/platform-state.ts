@@ -241,7 +241,7 @@ export function usePlatformState() {
     setCredentials(INITIAL_CREDENTIALS);
     setVerifications(INITIAL_VERIFICATIONS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
-    localStorage.clear();
+    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
   };
 
   return {

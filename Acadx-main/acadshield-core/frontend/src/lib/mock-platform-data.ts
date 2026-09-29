@@ -1,5 +1,8 @@
 ﻿export type UserRole = "UNIVERSITY" | "COMPANY" | "ADMIN" | "STUDENT" | null;
 
+import { requireDemoMode } from "./demo-mode";
+requireDemoMode();
+
 export interface Institution {
   id: string;
   legalName: string;

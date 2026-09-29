@@ -10,6 +10,18 @@
   "scripts": {
     "core:dev": "npm --prefix acadshield-core/backend run dev",
     "trust:dev": "npm --prefix acadshield-trust/backend run dev",
-    "test": "npm --prefix acadshield-core/backend test && npm --prefix acadshield-core/contracts test && npm --prefix acadshield-trust/backend test && cd /d acadshield-trust\\ai-service && .venv\\Scripts\\python.exe -m pytest -q tests"
+    "setup:node": "node scripts/checks.cjs install",
+    "test": "node scripts/checks.cjs test",
+    "test:core": "npm --prefix acadshield-core/backend test -- --runInBand",
+    "test:trust": "npm --prefix acadshield-trust/backend test -- --runInBand",
+    "test:frontend": "npm --prefix acadshield-core/frontend test",
+    "test:contracts": "npm --prefix acadshield-core/contracts test",
+    "test:ai": "node scripts/ai-test.cjs",
+    "test:workflow": "node --test scripts/checks.test.cjs",
+    "check:core": "npm --prefix acadshield-core/backend run build && npm run test:core",
+    "check:trust": "npm --prefix acadshield-trust/backend run build && npm run test:trust",
+    "check:frontend": "npm --prefix acadshield-core/frontend run lint && npm run test:frontend && npm --prefix acadshield-core/frontend run build",
+    "check:trust-frontend": "npm --prefix acadshield-trust/frontend run build",
+    "check": "node scripts/checks.cjs check"
   }
 }
