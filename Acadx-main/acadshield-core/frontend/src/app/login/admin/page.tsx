@@ -69,7 +69,7 @@ export default function AdminLoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <form onSubmit={handleSubmit} className="space-y-4 text-xs" suppressHydrationWarning>
             <div>
               <label className="block font-bold text-forest mb-1.5">
                 Admin Email / Master Identity
@@ -79,6 +79,7 @@ export default function AdminLoginPage() {
                 <input
                   type="email"
                   required
+                  suppressHydrationWarning
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@acadshield.network"
@@ -94,12 +95,14 @@ export default function AdminLoginPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   required
+                  suppressHydrationWarning
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-forest/20 bg-forest/5 text-forest text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ochre"
                 />
                 <button
                   type="button"
+                  suppressHydrationWarning
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-forest/40 hover:text-forest"
                 >
@@ -116,6 +119,7 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={isLoading}
+              suppressHydrationWarning
               className="w-full py-3 rounded-xl bg-forest hover:bg-forest/90 text-white font-bold shadow-md transition flex items-center justify-center gap-2 mt-4"
             >
               {isLoading ? (

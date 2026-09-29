@@ -15,11 +15,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#FAF7F2" />
       </head>
-      <body className="bg-canvas-texture min-h-screen text-[#0B251D] antialiased selection:bg-[#E5B25D] selection:text-[#0B251D]">
+      <body className="bg-canvas-texture min-h-screen text-[#0B251D] antialiased selection:bg-[#E5B25D] selection:text-[#0B251D]" suppressHydrationWarning>
         {children}
       </body>
     </html>

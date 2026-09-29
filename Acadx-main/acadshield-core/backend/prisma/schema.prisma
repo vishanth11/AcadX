@@ -147,6 +147,20 @@ model AcademicDocument {
   extractedFields       Json?
   analysisEvidence      Json?
   uploadedById          String?        @db.Uuid
+  credentialId          String?        @db.Uuid
+  vcId                  String?
+  ipfsCid               String?        @db.VarChar(120)
+  tokenId               String?
+  contractAddress       String?
+  transactionHash       String?
+  blockNumber           BigInt?
+  chainId               Int?
+  network               String?        @default("Polygon Amoy")
+  issuerWallet          String?
+  holderWallet          String?
+  verificationStatus    String         @default("REVIEW_REQUIRED")
+  lifecycleStatus       String         @default("ACTIVE")
+  nftStatus             String         @default("NOT_MINTED")
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
   institution           Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
@@ -156,6 +170,8 @@ model AcademicDocument {
   @@index([institutionId, createdAt])
   @@index([documentSha256])
   @@index([contentFingerprint])
+  @@index([tokenId])
+  @@index([transactionHash])
 }
 
 model Credential {
@@ -172,6 +188,13 @@ model Credential {
   credentialJws         String?
   credentialSha256      String           @db.Char(64)
   status                CredentialStatus @default(DRAFT)
+  vcId                  String?
+  network               String?          @default("Polygon Amoy")
+  issuerWallet          String?
+  holderWallet          String?
+  verificationStatus    String           @default("VERIFIED")
+  lifecycleStatus       String           @default("ACTIVE")
+  nftStatus             String           @default("NOT_MINTED")
   issuedAt              DateTime?
   expiresAt             DateTime?
   revokedAt             DateTime?

@@ -9,8 +9,11 @@ function run(args, cwd = root) {
 const packages = ["acadshield-core/backend", "acadshield-core/frontend", "acadshield-core/contracts", "acadshield-trust/backend", "acadshield-trust/frontend"];
 if (process.argv[2] === "install") {
   for (const folder of packages) {
-    if (!run(["ci", "--workspaces=false"], path.join(root, folder))) process.exit(1);
-    if (folder.endsWith("/backend") && !run(["run", "prisma:generate"], path.join(root, folder))) process.exit(1);
+    const pkgDir = path.join(root, folder);
+    if (!run(["ci", "--workspaces=false"], pkgDir)) {
+      if (!run(["install", "--workspaces=false"], pkgDir)) process.exit(1);
+    }
+    if (folder.endsWith("/backend") && !run(["run", "prisma:generate"], pkgDir)) process.exit(1);
   }
 } else {
   const jobs = process.argv[2] === "check"

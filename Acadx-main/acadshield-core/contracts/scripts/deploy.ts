@@ -9,6 +9,8 @@ async function main(): Promise<void> {
   await contract.waitForDeployment();
 
   const address = await contract.getAddress();
+  const tx = await contract.authorizeIssuer(deployer.address);
+  await tx.wait();
   const manifest = {
     contractName: "AcademicCredentialNFT",
     address,

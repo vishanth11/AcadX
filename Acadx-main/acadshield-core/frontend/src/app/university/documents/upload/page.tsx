@@ -30,6 +30,10 @@ export default function UniversityDocumentUploadWizard() {
   async function uploadDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file) { setError("Select a source document to upload."); return; }
+    if (file.size > 10 * 1024 * 1024) {
+      setError(`File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the maximum limit of 10 MB.`);
+      return;
+    }
     setBusy(true); setError(""); setResult(null);
     try {
       const form = new FormData();
@@ -39,11 +43,21 @@ export default function UniversityDocumentUploadWizard() {
       const response = await fetch(`${apiBase}/documents`, { method: "POST", credentials: "include", body: form });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(response.status === 401 || response.status === 403 ? "Sign in with an active university account before uploading." : "Upload failed. Check the file type and size, then try again.");
+        if (response.status === 401 || response.status === 403) {
+          setError(body.error === "INSTITUTION_SCOPE_REQUIRED" ? "Your account is not linked to an active institution." : "Sign in with an active university account before uploading.");
+        } else if (body.error === "DOCUMENT_TOO_LARGE") {
+          setError("File exceeds the maximum allowed size of 10 MB.");
+        } else if (body.error === "UNSUPPORTED_OR_INVALID_FILE_SIGNATURE") {
+          setError("Unsupported file format. Please upload a valid PDF, PNG, or JPG document.");
+        } else if (body.error) {
+          setError(`Upload failed: ${body.error}`);
+        } else {
+          setError("Upload failed. Check the file type and size (max 10 MB), then try again.");
+        }
         return;
       }
       setResult(body as UploadResult);
-    } catch { setError("Could not reach the document service. The file was not registered."); }
+    } catch { setError("Could not reach the document service. Please ensure the backend server is running on http://localhost:4000."); }
     finally { setBusy(false); }
   }
 
@@ -91,8 +105,8 @@ export default function UniversityDocumentUploadWizard() {
             <div><label htmlFor="holder-reference" className="block text-xs font-bold uppercase text-forest/70 mb-2">Institutional student reference (optional)</label><input id="holder-reference" value={holderReference} onChange={(event) => setHolderReference(event.target.value)} maxLength={160} className="w-full rounded-xl border border-forest/20 bg-forest/5 px-4 py-3 text-sm" placeholder="Your internal student ID" /></div>
           </div>
           <div>
-            <label htmlFor="source-file" className="block text-xs font-bold uppercase text-forest/70 mb-2">Original document</label>
-            <label htmlFor="source-file" className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-forest/30 bg-forest/5 p-5 hover:bg-forest/10"><Upload className="w-5 h-5" /><span className="text-sm">{file ? `${file.name} · ${file.size.toLocaleString()} bytes` : "Choose PDF, PNG, JPEG, or GIF"}</span></label>
+            <label htmlFor="source-file" className="block text-xs font-bold uppercase text-forest/70 mb-2">Original document (Max 10 MB)</label>
+            <label htmlFor="source-file" className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-forest/30 bg-forest/5 p-5 hover:bg-forest/10"><Upload className="w-5 h-5" /><span className="text-sm">{file ? `${file.name} · ${(file.size / (1024 * 1024)).toFixed(2)} MB (${file.size.toLocaleString()} bytes)` : "Choose PDF, PNG, JPEG, or GIF (Max 10 MB)"}</span></label>
             <input id="source-file" type="file" accept="application/pdf,image/png,image/jpeg,image/gif" className="sr-only" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
           </div>
           {error && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 flex gap-2"><AlertTriangle className="h-5 w-5 shrink-0" />{error}</div>}

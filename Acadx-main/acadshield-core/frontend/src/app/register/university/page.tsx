@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
-import { Building2, ShieldCheck, Upload, ArrowRight, CheckCircle2, Clock, Lock, Mail, Globe, MapPin, User } from "lucide-react";
+import { Building2, ShieldCheck, Upload, ArrowRight, CheckCircle2, Clock, Lock, Mail, Globe, MapPin, User, FileText, X, AlertCircle } from "lucide-react";
 
 export default function UniversityRegistrationPage() {
   const [submitted, setSubmitted] = useState(false);
@@ -23,10 +23,17 @@ export default function UniversityRegistrationPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(true);
+  const [accreditationFile, setAccreditationFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password && password !== confirmPassword) {
+    if (!password || password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
@@ -41,12 +48,24 @@ export default function UniversityRegistrationPage() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(body.error === "INSTITUTION_OR_EMAIL_ALREADY_EXISTS" ? "That institution code or administrator email is already registered." : "The application could not be submitted. Check the details and try again.");
+        if (body.error === "INSTITUTION_OR_EMAIL_ALREADY_EXISTS") {
+          setError("That institution code or administrator email is already registered.");
+        } else if (body.details?.fieldErrors?.initialPassword?.[0]) {
+          setError(`Password error: ${body.details.fieldErrors.initialPassword[0]}`);
+        } else if (body.details?.fieldErrors?.name?.[0]) {
+          setError(`Name error: ${body.details.fieldErrors.name[0]}`);
+        } else if (body.details?.fieldErrors?.code?.[0]) {
+          setError(`Code error: ${body.details.fieldErrors.code[0]}`);
+        } else if (body.error === "INTERNAL_SERVER_ERROR") {
+          setError("Database error: PostgreSQL database is unreachable or not started.");
+        } else {
+          setError(body.error || "The application could not be submitted. Check the details and try again.");
+        }
         return;
       }
       setSubmitted(true);
     } catch {
-      setError("Could not reach the registration service. The application was not submitted.");
+      setError("Could not reach the registration service. Check that backend is running at http://localhost:4000.");
     } finally {
       setSubmitting(false);
     }
@@ -250,12 +269,15 @@ export default function UniversityRegistrationPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-forest mb-1">Password *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-forest">Password *</label>
+                    <span className="text-[10px] text-forest/50">Min 8 characters</span>
+                  </div>
                   <input
                     type="password"
                     required
-                    placeholder="Minimum 16 characters"
-                    minLength={16}
+                    placeholder="Minimum 8 characters"
+                    minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-forest/20 bg-forest/5 text-forest focus:outline-none focus:ring-2 focus:ring-ochre"
@@ -267,6 +289,7 @@ export default function UniversityRegistrationPage() {
                     type="password"
                     required
                     placeholder="Repeat password"
+                    minLength={8}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-forest/20 bg-forest/5 text-forest focus:outline-none focus:ring-2 focus:ring-ochre"
@@ -277,18 +300,80 @@ export default function UniversityRegistrationPage() {
 
             {/* Section 4: Document Upload */}
             <div className="space-y-4 pt-4 border-t border-forest/10">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-forest/80">
-                4. Accreditation Proof Document
-              </h2>
-              <label className="border-2 border-dashed border-forest/20 hover:border-ochre transition rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer bg-forest/5">
-                <Upload className="w-8 h-8 text-ochre mb-2" />
-                <span className="text-xs font-bold text-forest">
-                  Upload Ministry/Board Accreditation Certificate (PDF or JPG)
-                </span>
-                <span className="text-[11px] text-forest/60 mt-1">
-                  Official registrar attestation, gazette notification, or charter document
-                </span>
-              </label>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-forest/80">
+                  4. Accreditation Proof Document
+                </h2>
+                <span className="text-[11px] text-forest/50">PDF, PNG, JPG (Max 15MB)</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) setAccreditationFile(f);
+                }}
+              />
+              {!accreditationFile ? (
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) setAccreditationFile(f);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed transition rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer ${
+                    isDragging
+                      ? "border-ochre bg-amber-50/50 scale-[1.01]"
+                      : "border-forest/20 hover:border-ochre bg-forest/5"
+                  }`}
+                >
+                  <Upload className="w-8 h-8 text-ochre mb-2" />
+                  <span className="text-xs font-bold text-forest">
+                    {isDragging ? "Drop your accreditation document here" : "Upload Ministry/Board Accreditation Certificate (PDF or JPG)"}
+                  </span>
+                  <span className="text-[11px] text-forest/60 mt-1">
+                    Drag & drop certificate here, or click to browse files
+                  </span>
+                </div>
+              ) : (
+                <div className="border-2 border-forest/20 bg-forest/5 rounded-2xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-forest/10 text-forest flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-ochre" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-forest">{accreditationFile.name}</p>
+                      <p className="text-[11px] text-forest/60">
+                        {accreditationFile.size / 1024 < 1024
+                          ? `${(accreditationFile.size / 1024).toFixed(1)} KB`
+                          : `${(accreditationFile.size / (1024 * 1024)).toFixed(2)} MB`}{" "}
+                        • Attached for accreditation verification
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAccreditationFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-forest/50 hover:text-red-600 transition"
+                    title="Remove document"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="pt-2">
