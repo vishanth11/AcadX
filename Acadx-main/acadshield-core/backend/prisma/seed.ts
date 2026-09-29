@@ -6,8 +6,8 @@ import { PrismaClient } from "@prisma/client";
 async function main(): Promise<void> {
   const email = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.INITIAL_ADMIN_PASSWORD;
-  if (!email || !password || password.length < 16) {
-    throw new Error("Set INITIAL_ADMIN_EMAIL and a unique INITIAL_ADMIN_PASSWORD of at least 16 characters before seeding.");
+  if (!email || !password || password.length < 8) {
+    throw new Error("Set INITIAL_ADMIN_EMAIL and a unique INITIAL_ADMIN_PASSWORD of at least 8 characters before seeding.");
   }
   const prisma = new PrismaClient();
   try {
