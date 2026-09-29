@@ -1,0 +1,29 @@
+{
+  "name": "acadshield-trust",
+  "version": "1.0.0",
+  "description": "Employer Trust Intelligence, AI Risk Analysis & Enterprise Verification Platform - Project B",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:ai": "cd ai-service && uvicorn app.main:app --reload --port 8000",
+    "test:backend": "npm --prefix backend test",
+    "lint": "npm run lint --workspaces --if-present",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "keywords": [
+    "trust-intelligence",
+    "employer-verification",
+    "ai-risk-analysis",
+    "trust-passport",
+    "trust-graph"
+  ],
+  "author": "AcadShield Engineering Team",
+  "license": "MIT"
+}

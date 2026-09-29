@@ -1,0 +1,187 @@
+{
+  "cred_valid_degree_001": {
+    "success": true,
+    "source": "MOCK_PROVIDER",
+    "credential": {
+      "id": "cred_valid_degree_001",
+      "opaqueId": "cuid_valid_001",
+      "type": "DEGREE",
+      "title": "Bachelor of Science in Computer Science",
+      "status": "ACTIVE",
+      "issuer": {
+        "id": "inst_mit_001",
+        "name": "Massachusetts Institute of Technology",
+        "officialDomain": "mit.edu",
+        "verified": true,
+        "verificationStatus": "VERIFIED"
+      },
+      "holder": {
+        "did": "did:acadshield:student:stu_001",
+        "studentNumber": "MIT-CS-2022"
+      },
+      "issuedAt": "2026-05-20T10:00:00Z",
+      "expiresAt": null
+    },
+    "integrity": {
+      "documentHash": "0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "hashAlgorithm": "SHA-256",
+      "ipfsMetadataCid": "QmZtmD2qt8STT4nUMewGhGxsrfafHGVTJ6GFiopjgEdFNr",
+      "ipfsDocumentCid": "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
+    },
+    "verification": {
+      "credentialExists": true,
+      "issuerVerified": true,
+      "signatureValid": true,
+      "blockchainVerified": true,
+      "hashValid": true,
+      "revoked": false,
+      "expired": false
+    },
+    "blockchain": {
+      "network": "polygon-amoy",
+      "chainId": 80002,
+      "contractAddress": "0x3Fa890B9772B5620803513360bA082b2EbC7338A",
+      "tokenId": "101",
+      "transactionHash": "0x4b78912e9b08f4c2843efc6b8c4d2938a101d32098b1b8cf471d2b826b1392fa",
+      "blockNumber": 1284920
+    }
+  },
+  "cred_revoked_diploma_002": {
+    "success": true,
+    "source": "MOCK_PROVIDER",
+    "credential": {
+      "id": "cred_revoked_diploma_002",
+      "opaqueId": "cuid_revoked_002",
+      "type": "DIPLOMA",
+      "title": "Diploma in Advanced Cybersecurity",
+      "status": "REVOKED",
+      "issuer": {
+        "id": "inst_poly_002",
+        "name": "National Polytechnic",
+        "officialDomain": "poly.edu",
+        "verified": true,
+        "verificationStatus": "VERIFIED"
+      },
+      "holder": {
+        "did": "did:acadshield:student:stu_002"
+      },
+      "issuedAt": "2025-01-10T00:00:00Z",
+      "expiresAt": null
+    },
+    "integrity": {
+      "documentHash": "0x1111b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "hashAlgorithm": "SHA-256",
+      "ipfsMetadataCid": "QmMockRevokedCid",
+      "ipfsDocumentCid": "QmMockDocCid"
+    },
+    "verification": {
+      "credentialExists": true,
+      "issuerVerified": true,
+      "signatureValid": true,
+      "blockchainVerified": true,
+      "hashValid": true,
+      "revoked": true,
+      "expired": false
+    },
+    "blockchain": {
+      "network": "polygon-amoy",
+      "chainId": 80002,
+      "contractAddress": "0x3Fa890B9772B5620803513360bA082b2EbC7338A",
+      "tokenId": "102",
+      "transactionHash": "0x5c78912e9b08f4c2843efc6b8c4d2938a101d32098b1b8cf471d2b826b1392fb",
+      "blockNumber": 1285000
+    }
+  },
+  "cred_expired_cert_003": {
+    "success": true,
+    "source": "MOCK_PROVIDER",
+    "credential": {
+      "id": "cred_expired_cert_003",
+      "opaqueId": "cuid_expired_003",
+      "type": "PROFESSIONAL_CERTIFICATION",
+      "title": "Cloud Solutions Architect",
+      "status": "EXPIRED",
+      "issuer": {
+        "id": "inst_aws_003",
+        "name": "Global Cloud Institute",
+        "officialDomain": "gci.org",
+        "verified": true,
+        "verificationStatus": "VERIFIED"
+      },
+      "holder": {
+        "did": "did:acadshield:student:stu_003"
+      },
+      "issuedAt": "2023-01-01T00:00:00Z",
+      "expiresAt": "2025-01-01T00:00:00Z"
+    },
+    "integrity": {
+      "documentHash": "0x2222b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "hashAlgorithm": "SHA-256",
+      "ipfsMetadataCid": "QmMockExpiredCid",
+      "ipfsDocumentCid": "QmMockDocCid2"
+    },
+    "verification": {
+      "credentialExists": true,
+      "issuerVerified": true,
+      "signatureValid": true,
+      "blockchainVerified": true,
+      "hashValid": true,
+      "revoked": false,
+      "expired": true
+    },
+    "blockchain": {
+      "network": "polygon-amoy",
+      "chainId": 80002,
+      "contractAddress": "0x3Fa890B9772B5620803513360bA082b2EbC7338A",
+      "tokenId": "103",
+      "transactionHash": "0x6d78912e9b08f4c2843efc6b8c4d2938a101d32098b1b8cf471d2b826b1392fc",
+      "blockNumber": 1280000
+    }
+  },
+  "cred_unverified_issuer_004": {
+    "success": true,
+    "source": "MOCK_PROVIDER",
+    "credential": {
+      "id": "cred_unverified_issuer_004",
+      "opaqueId": "cuid_unverified_004",
+      "type": "COURSE_CERTIFICATE",
+      "title": "Introductory Web Development",
+      "status": "ACTIVE",
+      "issuer": {
+        "id": "inst_unverified_004",
+        "name": "Unverified Online Academy",
+        "officialDomain": "unverified-academy.test",
+        "verified": false,
+        "verificationStatus": "PENDING"
+      },
+      "holder": {
+        "did": "did:acadshield:student:stu_004"
+      },
+      "issuedAt": "2026-08-10T00:00:00Z",
+      "expiresAt": null
+    },
+    "integrity": {
+      "documentHash": "0x3333b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "hashAlgorithm": "SHA-256",
+      "ipfsMetadataCid": "QmMockUnverifiedCid",
+      "ipfsDocumentCid": "QmMockDocCid3"
+    },
+    "verification": {
+      "credentialExists": true,
+      "issuerVerified": false,
+      "signatureValid": true,
+      "blockchainVerified": true,
+      "hashValid": true,
+      "revoked": false,
+      "expired": false
+    },
+    "blockchain": {
+      "network": "polygon-amoy",
+      "chainId": 80002,
+      "contractAddress": "0x3Fa890B9772B5620803513360bA082b2EbC7338A",
+      "tokenId": "104",
+      "transactionHash": "0x7e78912e9b08f4c2843efc6b8c4d2938a101d32098b1b8cf471d2b826b1392fd",
+      "blockNumber": 1286000
+    }
+  }
+}

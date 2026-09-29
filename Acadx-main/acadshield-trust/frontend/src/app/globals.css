@@ -1,0 +1,14 @@
+:root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; background: #f5f7f5; color: #17392d; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+a { color: inherit; }
+.shell { max-width: 880px; margin: 0 auto; padding: 64px 24px; }
+.eyebrow { color: #8a672b; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+h1 { margin: 12px 0; font-size: clamp(32px, 6vw, 52px); letter-spacing: -.04em; }
+.intro { max-width: 680px; color: #52635a; line-height: 1.65; }
+.panel { margin-top: 32px; padding: 22px; border: 1px solid #dbe3dc; border-radius: 16px; background: white; }
+.checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+.check { padding: 14px; border-radius: 12px; background: #f5f7f5; }
+.label { color: #607168; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.value { margin-top: 8px; font-weight: 700; }
+.note { margin-top: 24px; padding: 16px; border-left: 3px solid #d4aa5f; background: #fff9ec; color: #59451e; line-height: 1.55; }

@@ -1,0 +1,9 @@
+models/
+dataset/**/*.csv
+dataset/**/*.pdf
+dataset/**/*.png
+dataset/**/*.jpg
+dataset/**/*.jpeg
+__pycache__/
+*.pyc
+.pytest_cache/

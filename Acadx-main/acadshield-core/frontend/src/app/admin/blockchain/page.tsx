@@ -1,0 +1,21 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import EnterpriseNavbar from "@/components/EnterpriseNavbar";
+
+type Receipt = { credentialId: string; status: string; chainId: number | null; contractAddress: string | null; tokenId: string | null; transactionHash: string | null; blockNumber: string | null; mintedAt: string | null; chainEvidence: string };
+type ChainStatus = { generatedAt: string; writeIntegrationConfigured: boolean; configuredChainId: string | null; configuredContractAddress: string | null; rpcConfigured: boolean; storedReceiptCount: number; receipts: Receipt[]; note: string };
+const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1").replace(/\/$/, "");
+
+export default function AdminBlockchainPage() {
+  const [state, setState] = useState<ChainStatus | null>(null);
+  const [message, setMessage] = useState("Loading stored chain evidence…");
+  const load = useCallback(async () => {
+    const response = await fetch(`${apiBase}/admin/blockchain`, { credentials: "include", cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in with an active administrator account." : "Chain evidence is unavailable.");
+    setState(body as ChainStatus); setMessage("");
+  }, []);
+  useEffect(() => { load().catch((error: Error) => setMessage(error.message)); }, [load]);
+  return <div className="min-h-screen bg-canvas-texture pb-20 text-forest"><EnterpriseNavbar activeRole="ADMIN"/><main className="mx-auto max-w-7xl space-y-6 px-6 py-8"><header className="rounded-2xl border border-forest/10 bg-white p-6"><p className="text-xs font-bold uppercase tracking-widest text-forest/55">Administration · Stored chain evidence</p><h1 className="mt-2 font-serif text-4xl font-extrabold">Blockchain receipts</h1><p className="mt-2 text-sm text-forest/70">This page does not invent network height, gas, contracts, or transaction counts. It shows receipts stored by Core and reports whether configured chain checks could be read.</p></header>{message && <div role="status" className="rounded-xl border border-forest/10 bg-white p-4 text-sm">{message}</div>}{state && <><section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><article className="rounded-xl bg-white p-4"><p className="text-xs uppercase text-forest/55">Write integration</p><b>{state.writeIntegrationConfigured ? "Configured" : "Not configured"}</b></article><article className="rounded-xl bg-white p-4"><p className="text-xs uppercase text-forest/55">RPC settings</p><b>{state.rpcConfigured ? "Present" : "Not configured"}</b></article><article className="rounded-xl bg-white p-4"><p className="text-xs uppercase text-forest/55">Configured chain</p><b>{state.configuredChainId || "—"}</b></article><article className="rounded-xl bg-white p-4"><p className="text-xs uppercase text-forest/55">Stored mint receipts</p><b>{state.storedReceiptCount}</b></article></section><p className="rounded-xl bg-amber-50 p-4 text-xs text-amber-950">{state.note}</p>{state.configuredContractAddress && <p className="break-all rounded-xl bg-white p-4 font-mono text-xs">Configured contract: {state.configuredContractAddress}</p>}<section className="space-y-3">{state.receipts.map((receipt) => <article key={receipt.credentialId} className="space-y-2 rounded-xl border border-forest/10 bg-white p-5"><div className="flex flex-wrap justify-between gap-3"><b>Credential {receipt.credentialId}</b><span className="rounded-full bg-forest/5 px-3 py-1 text-xs font-bold">Chain evidence: {receipt.chainEvidence}</span></div><p className="text-xs">Registry lifecycle: {receipt.status} · chain {receipt.chainId ?? "—"} · token #{receipt.tokenId ?? "—"} · block {receipt.blockNumber ?? "—"}</p><p className="text-xs text-forest/60">Contract: {receipt.contractAddress || "—"} · minted {receipt.mintedAt ? new Date(receipt.mintedAt).toLocaleString() : "unknown"}</p>{receipt.transactionHash && <code className="block break-all text-xs">{receipt.transactionHash}</code>}</article>)}{state.receipts.length === 0 && <p className="rounded-xl bg-white p-6 text-sm text-forest/60">No confirmed mint receipts are stored in Core.</p>}</section></>}</main></div>;
+}

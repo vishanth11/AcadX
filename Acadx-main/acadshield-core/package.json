@@ -1,0 +1,32 @@
+{
+  "name": "acadshield-core",
+  "version": "1.0.0",
+  "description": "Digital Trust Infrastructure for Education, Skills and Employment - Project A Core Engine",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "contracts"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build:contracts": "npm run compile --workspace=contracts",
+    "test:contracts": "npm run test --workspace=contracts",
+    "test:backend": "npm run test --workspace=backend",
+    "lint": "npm run lint --workspaces --if-present",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "keywords": [
+    "verifiable-credentials",
+    "did",
+    "blockchain",
+    "polygon",
+    "education",
+    "trust-infrastructure"
+  ],
+  "author": "AcadShield Engineering Team",
+  "license": "MIT"
+}

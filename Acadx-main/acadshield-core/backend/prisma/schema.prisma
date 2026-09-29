@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  UNIVERSITY
+  COMPANY
+  STUDENT
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  REVIEW_REQUIRED
+  VERIFIED
+  MISMATCH
+  FAILED
+  REVOKED
+}
+
+enum CredentialStatus {
+  DRAFT
+  ACTIVE
+  REVOKED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum VerificationDecision {
+  VERIFIED
+  REVIEW_REQUIRED
+  MISMATCH
+  REVOKED
+  EXPIRED
+  INVALID
+  SOURCE_UNAVAILABLE
+  PROCESSING
+  FAILED
+}
+
+model Institution {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  code           String       @unique
+  country        String?
+  website        String?
+  status         AccountStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  users          User[]
+  documents      AcademicDocument[]
+  credentials    Credential[]
+  templates      InstitutionTemplate[]
+}
+
+model Company {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  domain         String?
+  status         AccountStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  users          User[]
+  verifications  Verification[]
+}
+
+model User {
+  id             String       @id @default(uuid()) @db.Uuid
+  email          String       @unique
+  passwordHash   String
+  role           UserRole
+  status         AccountStatus @default(PENDING)
+  institutionId  String?      @db.Uuid
+  companyId      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  institution    Institution? @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  company        Company?     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  auditEvents    AuditLog[]
+
+  @@index([institutionId, role])
+  @@index([companyId, role])
+}
+
+model AcademicDocument {
+  id                    String         @id @default(uuid()) @db.Uuid
+  institutionId         String         @db.Uuid
+  holderReference       String?
+  originalFileName      String
+  mediaType             String
+  sizeBytes             BigInt
+  storageReference      String
+  documentSha256        String         @db.Char(64)
+  contentFingerprint    String?        @db.Char(64)
+  documentType          String?
+  status                DocumentStatus @default(UPLOADED)
+  ocrEvidence           Json?
+  extractedFields       Json?
+  analysisEvidence      Json?
+  uploadedById          String?        @db.Uuid
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  institution           Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  credentials           Credential[]
+  verifications         Verification[]
+
+  @@index([institutionId, createdAt])
+  @@index([documentSha256])
+  @@index([contentFingerprint])
+}
+
+model Credential {
+  id                    String           @id @default(uuid()) @db.Uuid
+  institutionId         String           @db.Uuid
+  documentId            String?          @db.Uuid
+  credentialType        String
+  subjectReference      String
+  issuerDid             String
+  credentialJson        Json
+  credentialJws         String?
+  credentialSha256      String           @db.Char(64)
+  status                CredentialStatus @default(DRAFT)
+  issuedAt              DateTime?
+  expiresAt             DateTime?
+  revokedAt             DateTime?
+  revocationReason      String?
+  supersedesId          String?          @db.Uuid
+  chainId               Int?
+  contractAddress       String?
+  tokenId               String?
+  transactionHash       String?
+  metadataCid           String?          @db.VarChar(120)
+  metadataUri           String?          @db.VarChar(512)
+  blockNumber           BigInt?
+  mintedAt              DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  institution           Institution      @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  document              AcademicDocument? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  supersedes            Credential?      @relation("CredentialVersion", fields: [supersedesId], references: [id], onDelete: Restrict)
+  versions              Credential[]     @relation("CredentialVersion")
+  verifications         Verification[]
+
+  @@unique([chainId, contractAddress, tokenId])
+  @@index([institutionId, status])
+  @@index([credentialSha256])
+}
+
+model Verification {
+  id                   String               @id @default(uuid()) @db.Uuid
+  credentialId         String?              @db.Uuid
+  documentId            String?              @db.Uuid
+  companyId             String?              @db.Uuid
+  decision              VerificationDecision
+  deterministicEvidence Json
+  aiEvidence             Json?
+  sourceStatus           String?
+  requestId              String?              @unique
+  createdAt              DateTime             @default(now())
+  credential             Credential?          @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  document               AcademicDocument?    @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  company                Company?             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([credentialId, createdAt])
+  @@index([companyId, createdAt])
+}
+
+model InstitutionTemplate {
+  id                   String      @id @default(uuid()) @db.Uuid
+  institutionId        String      @db.Uuid
+  documentType         String
+  version              Int         @default(1)
+  templateName         String
+  expectedFields       Json
+  expectedRegions      Json?
+  active               Boolean     @default(false)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  institution          Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([institutionId, documentType, version])
+  @@index([institutionId, documentType, active])
+}
+
+model AuditLog {
+  id             BigInt    @id @default(autoincrement())
+  actorId        String?   @db.Uuid
+  action         String
+  entityType     String
+  entityId       String?
+  requestId      String?
+  details        Json?
+  createdAt      DateTime  @default(now())
+  actor          User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model ApiKey {
+  id             String      @id @default(uuid()) @db.Uuid
+  name           String
+  keyHash        String      @unique @db.Char(64)
+  status         AccountStatus @default(ACTIVE)
+  scopes         String[]
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdAt      DateTime    @default(now())
+}

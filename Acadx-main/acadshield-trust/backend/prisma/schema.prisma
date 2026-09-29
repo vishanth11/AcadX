@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+model CompanyApiKey {
+  id             String       @id @default(uuid()) @db.Uuid
+  companyId      String       @db.Uuid
+  name           String
+  tokenHash      String       @unique @db.Char(64)
+  status         ApiKeyStatus @default(ACTIVE)
+  scopes         String[]     @default([])
+  dailyQuota     Int          @default(1000)
+  usedToday      Int          @default(0)
+  quotaResetAt   DateTime     @default(now())
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  verifications  VerificationRecord[]
+
+  @@index([companyId, status])
+}
+
+model VerificationRecord {
+  id                    String       @id @default(uuid()) @db.Uuid
+  companyId             String       @db.Uuid
+  apiKeyId              String?      @db.Uuid
+  credentialId          String
+  decision              String
+  submittedSha256        String       @db.Char(64)
+  sourceEvidence         Json
+  aiEvidence             Json?
+  createdAt              DateTime     @default(now())
+  apiKey                 CompanyApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([credentialId, createdAt])
+}

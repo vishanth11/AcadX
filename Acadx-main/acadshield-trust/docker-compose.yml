@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: acadshield-trust-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-acadshield_trust}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local environment}
+      POSTGRES_DB: ${POSTGRES_DB:-acadshield_trust}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - trust_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acadshield_trust -d acadshield_trust"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trust-network
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: acadshield-trust-ai
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      AI_SERVICE_API_KEY: ${AI_SERVICE_API_KEY:?Set AI_SERVICE_API_KEY in your local environment}
+      ANOMALY_MODEL_PATH: ${ANOMALY_MODEL_PATH:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-service/models:/app/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trust-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: acadshield-trust-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-acadshield_trust}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local environment}@postgres:5432/${POSTGRES_DB:-acadshield_trust}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your local environment}
+      CORS_ORIGIN: http://localhost:3001
+      FRONTEND_URL: http://localhost:3001
+      CREDENTIAL_PROVIDER: ${CREDENTIAL_PROVIDER:-project_a}
+      PROJECT_A_API_URL: ${PROJECT_A_API_URL:-http://host.docker.internal:4000/api/v1}
+      PROJECT_A_INTERNAL_API_KEY: ${PROJECT_A_INTERNAL_API_KEY:?Set PROJECT_A_INTERNAL_API_KEY in your local environment}
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_API_KEY: ${AI_SERVICE_API_KEY:?Set AI_SERVICE_API_KEY in your local environment}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-mock}
+    ports:
+      - "5000:5000"
+    networks:
+      - trust-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: acadshield-trust-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api/v1
+      NEXT_PUBLIC_TRUST_URL: http://localhost:3001
+    ports:
+      - "3001:3001"
+    networks:
+      - trust-network
+
+volumes:
+  trust_postgres_data:
+    driver: local
+
+networks:
+  trust-network:
+    driver: bridge

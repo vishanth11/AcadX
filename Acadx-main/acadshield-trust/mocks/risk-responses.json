@@ -1,0 +1,43 @@
+{
+  "low_risk": {
+    "riskLevel": "LOW",
+    "modelVersion": "1.0.0",
+    "featureVersion": "1.0",
+    "modelName": "AcadShieldCredentialAnomaly",
+    "assessedAt": "2026-09-24T18:30:00Z",
+    "riskFactors": []
+  },
+  "review_issuance_spike": {
+    "riskLevel": "REVIEW",
+    "modelVersion": "1.0.0",
+    "featureVersion": "1.0",
+    "modelName": "AcadShieldCredentialAnomaly",
+    "assessedAt": "2026-09-24T18:30:00Z",
+    "riskFactors": [
+      {
+        "code": "UNUSUAL_ISSUANCE_VELOCITY",
+        "description": "Issuer has minted credentials at 4.2x their 30-day baseline average in the last 2 hours.",
+        "severity": "MEDIUM"
+      }
+    ]
+  },
+  "high_attention_multiple_anomalies": {
+    "riskLevel": "HIGH_ATTENTION",
+    "modelVersion": "1.0.0",
+    "featureVersion": "1.0",
+    "modelName": "AcadShieldCredentialAnomaly",
+    "assessedAt": "2026-09-24T18:30:00Z",
+    "riskFactors": [
+      {
+        "code": "HIGH_DUPLICATION_FREQUENCY",
+        "description": "Candidate claims identical course completion across 3 unrelated institutions within a 48-hour window.",
+        "severity": "HIGH"
+      },
+      {
+        "code": "METADATA_TIMESTAMP_DISCREPANCY",
+        "description": "Credential graduation date precedes institution foundation date.",
+        "severity": "HIGH"
+      }
+    ]
+  }
+}

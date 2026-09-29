@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: acadshield-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-acadshield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local environment}
+      POSTGRES_DB: ${POSTGRES_DB:-acadshield_core}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acadshield -d acadshield_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - acadshield-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: acadshield-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-acadshield}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local environment}@postgres:5432/${POSTGRES_DB:-acadshield_core}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your local environment}
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:?Set INTERNAL_SERVICE_API_KEY in your local environment}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://host.docker.internal:8000}
+      AI_SERVICE_API_KEY: ${AI_SERVICE_API_KEY}
+      DOCUMENT_STORAGE_DIR: /app/storage/documents
+      MAX_DOCUMENT_BYTES: ${MAX_DOCUMENT_BYTES:-15728640}
+      CORS_ORIGIN: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      SOURCE_PROVIDER: ${SOURCE_PROVIDER:-unconfigured}
+      VC_ISSUER_INSTITUTION_ID: ${VC_ISSUER_INSTITUTION_ID:-}
+      VC_ISSUER_DID: ${VC_ISSUER_DID:-}
+      VC_ISSUER_KEY_ID: ${VC_ISSUER_KEY_ID:-}
+      VC_ISSUER_PRIVATE_KEY_PEM: ${VC_ISSUER_PRIVATE_KEY_PEM:-}
+      VC_ISSUER_PUBLIC_KEY_PEM: ${VC_ISSUER_PUBLIC_KEY_PEM:-}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      BLOCKCHAIN_RPC_URL: ${BLOCKCHAIN_RPC_URL:-https://rpc-amoy.polygon.technology}
+      CHAIN_ID: ${CHAIN_ID:-80002}
+      DEPLOYER_PRIVATE_KEY: ${DEPLOYER_PRIVATE_KEY}
+      BLOCKCHAIN_ISSUER_PRIVATE_KEY: ${BLOCKCHAIN_ISSUER_PRIVATE_KEY:-}
+      BLOCKCHAIN_RECIPIENT_ADDRESS: ${BLOCKCHAIN_RECIPIENT_ADDRESS:-}
+      CREDENTIAL_CONTRACT_ADDRESS: ${CREDENTIAL_CONTRACT_ADDRESS}
+      VERIFY_BASE_URL: ${VERIFY_BASE_URL:-http://localhost:3000/verify}
+      IDENTITY_CONTRACT_ADDRESS: ${IDENTITY_CONTRACT_ADDRESS}
+      ACCESS_CONTROL_CONTRACT_ADDRESS: ${ACCESS_CONTROL_CONTRACT_ADDRESS}
+      IPFS_STORAGE_MODE: ${IPFS_STORAGE_MODE:-disabled}
+      IPFS_JWT: ${IPFS_JWT:-}
+    ports:
+      - "4000:4000"
+    volumes:
+      - private_documents:/app/storage/documents
+    networks:
+      - acadshield-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: acadshield-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+      NEXT_PUBLIC_CHAIN_ID: ${CHAIN_ID:-80002}
+      NEXT_PUBLIC_CHAIN_NAME: "Polygon Amoy Testnet"
+      NEXT_PUBLIC_VERIFY_BASE_URL: http://localhost:3000/verify
+      NEXT_PUBLIC_CREDENTIAL_CONTRACT_ADDRESS: ${CREDENTIAL_CONTRACT_ADDRESS}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your local environment}
+    ports:
+      - "3000:3000"
+    networks:
+      - acadshield-network
+
+  hardhat-node:
+    image: node:20-alpine
+    container_name: acadshield-hardhat
+    working_dir: /app
+    volumes:
+      - ./contracts:/app
+    command: sh -c "npm install && npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "8545:8545"
+    networks:
+      - acadshield-network
+    profiles:
+      - local-chain
+
+volumes:
+  postgres_data:
+    driver: local
+  private_documents:
+    driver: local
+
+networks:
+  acadshield-network:
+    driver: bridge

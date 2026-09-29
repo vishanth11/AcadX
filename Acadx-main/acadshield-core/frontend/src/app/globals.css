@@ -1,0 +1,69 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Cinzel:wght@600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-parchment: #FAF7F2;
+  --forest-dark: #0B251D;
+  --amber-honey: #E5B25D;
+  --amber-deep: #C88A32;
+  --sage-tint: #4E7A68;
+}
+
+body {
+  background-color: var(--bg-parchment);
+  color: var(--forest-dark);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+/* Background Micro-Dot Grid Pattern (Exact match to template) */
+.bg-canvas-texture {
+  background-color: #FAF7F2;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(215, 235, 222, 0.5) 0%, transparent 40%),
+    radial-gradient(circle at 90% 25%, rgba(247, 233, 214, 0.55) 0%, transparent 45%),
+    radial-gradient(circle, rgba(11, 37, 29, 0.22) 1.1px, transparent 1.1px);
+  background-size: 100% 100%, 100% 100%, 16px 16px;
+  background-repeat: no-repeat, no-repeat, repeat;
+}
+
+/* 3D Ochre Shadow on Giant Headlines (Exact match to "Raw honey, from the hum.") */
+.headline-shadow {
+  text-shadow: 2.5px 3.5px 0px #E5B25D, 4px 5.5px 0px rgba(181, 131, 51, 0.25);
+}
+
+.headline-shadow-sm {
+  text-shadow: 1.5px 2px 0px #E5B25D;
+}
+
+/* Vertical Spine Text on Right Margin */
+.vertical-text-spine {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.3em;
+}
+
+/* Arched Window Portal */
+.arch-window-portal {
+  border-top-left-radius: 240px;
+  border-top-right-radius: 240px;
+  border-bottom-left-radius: 44px;
+  border-bottom-right-radius: 44px;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #FAF7F2;
+}
+::-webkit-scrollbar-thumb {
+  background: #0B251D;
+  border-radius: 4px;
+}

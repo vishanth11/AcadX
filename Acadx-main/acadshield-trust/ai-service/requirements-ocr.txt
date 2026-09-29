@@ -1,0 +1,3 @@
+# Optional CPU OCR runtime; large wheels and first-use model downloads are expected.
+paddleocr>=2.7.3,<3.0
+paddlepaddle>=2.6.1,<3.0

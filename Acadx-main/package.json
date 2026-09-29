@@ -1,0 +1,15 @@
+{
+  "name": "acadshield-x",
+  "version": "1.0.0",
+  "description": "ACADSHIELD X: Digital Trust Infrastructure for Education, Skills and Employment",
+  "private": true,
+  "workspaces": [
+    "acadshield-core",
+    "acadshield-trust"
+  ],
+  "scripts": {
+    "core:dev": "npm --prefix acadshield-core/backend run dev",
+    "trust:dev": "npm --prefix acadshield-trust/backend run dev",
+    "test": "npm --prefix acadshield-core/backend test && npm --prefix acadshield-core/contracts test && npm --prefix acadshield-trust/backend test && cd /d acadshield-trust\\ai-service && .venv\\Scripts\\python.exe -m pytest -q tests"
+  }
+}
