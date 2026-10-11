@@ -9,6 +9,9 @@
   ],
   "scripts": {
     "core:dev": "npm --prefix acadshield-core/backend run dev",
+    "frontend:dev": "npm --prefix acadshield-core/frontend run dev",
+    "contracts:node": "npm --prefix acadshield-core/contracts run node",
+    "contracts:deploy": "npm --prefix acadshield-core/contracts run deploy:local",
     "trust:dev": "npm --prefix acadshield-trust/backend run dev",
     "setup:node": "node scripts/checks.cjs install",
     "test": "node scripts/checks.cjs test",

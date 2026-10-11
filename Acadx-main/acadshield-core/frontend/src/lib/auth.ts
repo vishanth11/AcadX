@@ -9,7 +9,10 @@ export async function signIn(email: string, password: string, expectedRole: Role
     body: JSON.stringify({ email, password }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error === "INVALID_CREDENTIALS" ? "Email or password is incorrect, or the account is not active." : "Sign in is unavailable. Check the API configuration.");
+  if (!response.ok) {
+    if (response.status === 429) throw new Error("Too many login attempts. Please wait a moment and try again.");
+    throw new Error(body.error === "INVALID_CREDENTIALS" ? "Email or password is incorrect, or the account is not active." : (body.error || "Sign in is unavailable. Check the API configuration."));
+  }
   if (body.user?.role !== expectedRole) {
     await fetch(`${baseUrl}/auth/logout`, { method: "POST", credentials: "include" });
     throw new Error("This account does not have access to this workspace.");

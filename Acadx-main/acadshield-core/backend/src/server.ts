@@ -24,6 +24,7 @@ import { registerSharingRoutes } from "./sharing-routes";
 import { registerReportRoutes } from "./report-routes";
 import { prepareOperation, settleOperation } from "./credential-operations";
 import { apiContract } from "./api-contract";
+import * as mongoVault from "./mongodb-vault";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -41,9 +42,9 @@ app.use(express.json({ limit: "256kb" }));
 type SessionRole = "ADMIN" | "UNIVERSITY" | "COMPANY" | "STUDENT";
 type SessionRequest = Request & { session?: { userId: string; role: SessionRole; institutionId?: string; companyId?: string } };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxDocumentBytes, files: 1 } });
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
-const registrationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false });
-const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: process.env.NODE_ENV === "production" ? 10 : 500, standardHeaders: true, legacyHeaders: false });
+const registrationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: process.env.NODE_ENV === "production" ? 5 : 200, standardHeaders: true, legacyHeaders: false });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: process.env.NODE_ENV === "production" ? 60 : 500, standardHeaders: true, legacyHeaders: false });
 const blockchainAbi = [
   "function ISSUER_ROLE() view returns (bytes32)",
   "function hasRole(bytes32 role, address account) view returns (bool)",
@@ -300,6 +301,275 @@ app.get(`${apiPrefix}/admin/blockchain`, requireSession("ADMIN"), async (_req, r
       receipts,
       note: "Only stored mint receipts are listed. Chain evidence is independently read when a fully configured RPC integration is available.",
     });
+  } catch (error) { next(error); }
+});
+
+app.get(`${apiPrefix}/admin/vault/status`, requireSession("ADMIN"), async (_req, res, next) => {
+  try {
+    const stats = await mongoVault.getVaultStats();
+    res.json({
+      ...stats,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) { next(error); }
+});
+
+app.get(`${apiPrefix}/admin/vault/pending`, requireSession("ADMIN"), async (_req, res, next) => {
+  try {
+    let pending = await mongoVault.getPendingSubmissions();
+    if (pending.length === 0) {
+      const dbPending = await prisma.academicDocument.findMany({
+        where: { status: { in: ["REVIEW_REQUIRED", "UPLOADED"] } },
+        include: { institution: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      pending = dbPending.map((doc) => ({
+        id: doc.id,
+        type: "SOURCE_DOCUMENT",
+        institutionId: doc.institutionId,
+        institutionName: doc.institution?.name || "University",
+        submittedBy: doc.uploadedById || "University Staff",
+        status: "PENDING_ADMIN_APPROVAL",
+        submittedAt: doc.createdAt,
+        documentSha256: doc.documentSha256,
+        credentialSha256: doc.documentSha256,
+        payload: {
+          documentId: doc.id,
+          credentialId: doc.credentialId,
+          fileName: doc.originalFileName,
+          mediaType: doc.mediaType,
+          sizeBytes: Number(doc.sizeBytes),
+          documentType: doc.documentType,
+          holderReference: doc.holderReference,
+          ipfsCid: doc.ipfsCid,
+          analysis: doc.analysisEvidence as Record<string, unknown>,
+        },
+      }));
+    }
+    res.json({ pending });
+  } catch (error) { next(error); }
+});
+
+app.get(`${apiPrefix}/admin/vault/records`, requireSession("ADMIN"), async (_req, res, next) => {
+  try {
+    const records = await mongoVault.getVaultRecords();
+    res.json({ records });
+  } catch (error) { next(error); }
+});
+
+app.get(`${apiPrefix}/admin/vault/records/:id`, requireSession("ADMIN"), async (req, res, next) => {
+  try {
+    const record = await mongoVault.getVaultRecordById(req.params.id);
+    if (!record) { res.status(404).json({ error: "VAULT_RECORD_NOT_FOUND" }); return; }
+    res.json({ record });
+  } catch (error) { next(error); }
+});
+
+app.post(`${apiPrefix}/admin/vault/records`, requireSession("ADMIN"), async (req: SessionRequest, res, next) => {
+  try {
+    const parsed = z.object({
+      recordType: z.enum(["SOURCE_DOCUMENT", "CREDENTIAL", "INSTITUTION_REGISTRATION"]).default("SOURCE_DOCUMENT"),
+      institutionId: z.string().min(1),
+      institutionName: z.string().optional(),
+      payload: z.record(z.unknown()).default({}),
+      documentSha256: z.string().optional(),
+      credentialSha256: z.string().optional(),
+      notes: z.string().optional(),
+    }).safeParse(req.body);
+
+    if (!parsed.success) {
+      res.status(400).json({ error: "INVALID_VAULT_RECORD_DATA", details: parsed.error.flatten() });
+      return;
+    }
+
+    const created = await mongoVault.createVaultRecord(
+      {
+        recordType: parsed.data.recordType,
+        institutionId: parsed.data.institutionId,
+        institutionName: parsed.data.institutionName,
+        payload: parsed.data.payload,
+        documentSha256: parsed.data.documentSha256,
+        credentialSha256: parsed.data.credentialSha256,
+      },
+      {
+        adminId: req.session!.userId,
+        adminEmail: req.session?.userId,
+        notes: parsed.data.notes,
+      }
+    );
+
+    if (!created) {
+      res.status(503).json({ error: "VAULT_STORAGE_FAILED" });
+      return;
+    }
+
+    res.status(201).json({ success: true, message: "Record created in MongoDB Atlas Vault", record: created });
+  } catch (error) { next(error); }
+});
+
+app.put(`${apiPrefix}/admin/vault/records/:id`, requireSession("ADMIN"), async (req: SessionRequest, res, next) => {
+  try {
+    const { id } = req.params;
+    const parsed = z.object({
+      institutionName: z.string().optional(),
+      payload: z.record(z.unknown()).optional(),
+      documentSha256: z.string().optional(),
+      credentialSha256: z.string().optional(),
+      notes: z.string().optional(),
+    }).safeParse(req.body);
+
+    if (!parsed.success) {
+      res.status(400).json({ error: "INVALID_UPDATE_DATA", details: parsed.error.flatten() });
+      return;
+    }
+
+    const updated = await mongoVault.updateVaultRecord(
+      id,
+      {
+        institutionName: parsed.data.institutionName,
+        payload: parsed.data.payload,
+        documentSha256: parsed.data.documentSha256,
+        credentialSha256: parsed.data.credentialSha256,
+      },
+      {
+        adminId: req.session!.userId,
+        adminEmail: req.session?.userId,
+        notes: parsed.data.notes,
+      }
+    );
+
+    if (!updated) {
+      res.status(404).json({ error: "VAULT_RECORD_NOT_FOUND_OR_FAILED" });
+      return;
+    }
+
+    res.json({ success: true, message: "Record updated in MongoDB Atlas Vault", record: updated });
+  } catch (error) { next(error); }
+});
+
+app.delete(`${apiPrefix}/admin/vault/records/:id`, requireSession("ADMIN"), async (req: SessionRequest, res, next) => {
+  try {
+    const { id } = req.params;
+    const reason = typeof req.body?.reason === "string" ? req.body.reason : "Administrative record deletion";
+    const deleted = await mongoVault.deleteVaultRecord(id, {
+      adminId: req.session!.userId,
+      adminEmail: req.session?.userId,
+      reason,
+    });
+
+    if (!deleted) {
+      res.status(404).json({ error: "VAULT_RECORD_NOT_FOUND_OR_FAILED" });
+      return;
+    }
+
+    res.json({ success: true, message: "Record deleted from MongoDB Atlas Vault" });
+  } catch (error) { next(error); }
+});
+
+app.post(`${apiPrefix}/admin/vault/:submissionId/approve`, requireSession("ADMIN"), async (req: SessionRequest, res, next) => {
+  const { submissionId } = req.params;
+  const notes = typeof req.body?.notes === "string" ? req.body.notes : "Approved by administrator for MongoDB Atlas Vault";
+  try {
+    const doc = await prisma.academicDocument.findUnique({
+      where: { id: submissionId },
+      include: { institution: { select: { name: true } } },
+    });
+
+    let fallbackSubmission: mongoVault.UniversitySubmission | undefined;
+    if (doc) {
+      fallbackSubmission = {
+        id: doc.id,
+        type: "SOURCE_DOCUMENT",
+        institutionId: doc.institutionId,
+        institutionName: doc.institution?.name,
+        submittedBy: doc.uploadedById || "University",
+        status: "PENDING_ADMIN_APPROVAL",
+        submittedAt: doc.createdAt,
+        documentSha256: doc.documentSha256,
+        credentialSha256: doc.documentSha256,
+        payload: {
+          documentId: doc.id,
+          credentialId: doc.credentialId,
+          fileName: doc.originalFileName,
+          mediaType: doc.mediaType,
+          sizeBytes: Number(doc.sizeBytes),
+          documentType: doc.documentType,
+          holderReference: doc.holderReference,
+          ipfsCid: doc.ipfsCid,
+          analysis: doc.analysisEvidence as Record<string, unknown>,
+        },
+      };
+    }
+
+    const vaultRecord = await mongoVault.approveAndVaultSubmission(
+      submissionId,
+      {
+        adminId: req.session!.userId,
+        adminEmail: req.session?.userId,
+        notes,
+      },
+      doc?.tokenId ? {
+        tokenId: doc.tokenId,
+        transactionHash: doc.transactionHash || undefined,
+        chainId: doc.chainId || undefined,
+        contractAddress: doc.contractAddress || undefined,
+      } : undefined,
+      fallbackSubmission
+    );
+
+    if (doc) {
+      await prisma.academicDocument.update({
+        where: { id: submissionId },
+        data: { status: "VERIFIED", verificationStatus: "VERIFIED" },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.session!.userId,
+          action: "SUBMISSION_APPROVED_AND_VAULTED",
+          entityType: "AcademicDocument",
+          entityId: submissionId,
+          details: { notes, vaultRecordId: vaultRecord?.id },
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "University submission approved and vaulted in MongoDB Atlas.",
+      vaultRecord,
+    });
+  } catch (error) { next(error); }
+});
+
+app.post(`${apiPrefix}/admin/vault/:submissionId/reject`, requireSession("ADMIN"), async (req: SessionRequest, res, next) => {
+  const { submissionId } = req.params;
+  const reason = typeof req.body?.reason === "string" ? req.body.reason : "Administrative rejection";
+  try {
+    await mongoVault.rejectUniversitySubmission(submissionId, {
+      adminId: req.session!.userId,
+      adminEmail: req.session?.userId,
+      reason,
+    });
+
+    const doc = await prisma.academicDocument.findUnique({ where: { id: submissionId } });
+    if (doc) {
+      await prisma.academicDocument.update({
+        where: { id: submissionId },
+        data: { status: "FAILED", verificationStatus: "FAILED" },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.session!.userId,
+          action: "SUBMISSION_REJECTED",
+          entityType: "AcademicDocument",
+          entityId: submissionId,
+          details: { reason },
+        },
+      });
+    }
+
+    res.json({ success: true, message: "University submission rejected." });
   } catch (error) { next(error); }
 });
 
@@ -785,6 +1055,43 @@ app.post(`${apiPrefix}/documents`, requireSession("UNIVERSITY"), uploadLimiter, 
       }
     }
 
+    try {
+      const institution = (prisma as any).institution ? await prisma.institution.findUnique({
+        where: { id: institutionId },
+        select: { name: true },
+      }) : null;
+      await mongoVault.saveUniversitySubmission({
+        id: record.id,
+        type: "SOURCE_DOCUMENT",
+        institutionId,
+        institutionName: institution?.name || undefined,
+        submittedBy: req.session?.userId || "UNKNOWN",
+        status: "PENDING_ADMIN_APPROVAL",
+        submittedAt: new Date(),
+        documentSha256: digest,
+        credentialSha256: digest,
+        payload: {
+          documentId: record.id,
+          credentialId: vcId,
+          fileName: safeName,
+          mediaType,
+          sizeBytes: req.file.size,
+          documentType: docType,
+          holderReference: metadata.data.holderReference || null,
+          studentName: metadata.data.studentName || null,
+          studentEmail: metadata.data.studentEmail || null,
+          studentWallet: metadata.data.studentWallet || null,
+          ipfsCid: finalIpfsCid,
+          metadataUri: finalMetadataUri,
+          qrUrl,
+          analysis,
+          sourceVerification: sourceResult,
+        },
+      });
+    } catch (err) {
+      console.warn("MongoDB Atlas recording deferred:", err);
+    }
+
     const analysisStatus = typeof analysis.decision === "string" ? analysis.decision : typeof analysis.status === "string" ? analysis.status : "UNAVAILABLE";
     await prisma.auditLog.create({ data: { actorId: req.session!.userId, action: "DOCUMENT_UPLOADED", entityType: "AcademicDocument", entityId: record.id, details: { fileSha256: digest, byteLength: req.file.size, mediaType, analysisStatus } } });
     res.status(201).json({
@@ -1148,6 +1455,18 @@ app.post(`${apiPrefix}/credentials/:credentialId/mint`, requireSession("UNIVERSI
       details: { contractAddress: config.contractAddress, reference, digest, metadataUri: metadataURI, metadataCid: ipfsMetadata?.cid ?? null, recipient: config.recipientAddress },
       transaction: await contract.getFunction("mintCredential(address,bytes32,bytes32,string)").populateTransaction(config.recipientAddress, reference, digest, metadataURI) });
     const result = await settleOperation(prisma, operation, provider, blockchainAbi, true);
+    if (result.status === "CONFIRMED") {
+      try {
+        await mongoVault.recordBlockchainAnchor(row.documentId || row.id, {
+          tokenId: result.tokenId || undefined,
+          transactionHash: result.transactionHash || undefined,
+          chainId: Number(config.chainId),
+          contractAddress: config.contractAddress,
+        });
+      } catch (err) {
+        console.warn("MongoDB vault blockchain anchor update skipped:", err);
+      }
+    }
     res.status(result.status === "CONFIRMED" ? 201 : 202).json(result);
   } catch (error) {
     if (error instanceof Error && error.message === "BLOCKCHAIN_NETWORK_MISMATCH") {

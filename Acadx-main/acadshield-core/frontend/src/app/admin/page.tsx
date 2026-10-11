@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, ArrowDownRight, ArrowRight, Award, Building2, BriefcaseBusiness, Clock3, FileCheck2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Activity, ArrowDownRight, ArrowRight, Award, Building2, BriefcaseBusiness, Clock3, Database, FileCheck2, RefreshCw, ShieldCheck } from "lucide-react";
 
 type Counts = Record<string, number>;
 type Overview = { generatedAt: string; institutions: Counts; companies: Counts; documents: Counts; credentials: Counts; verifications: Counts };
 type AuditEntry = { id: string; action: string; entityType: string; entityId: string | null; createdAt: string; actor: { email: string; role: string } | null };
 type ChainStatus = { writeIntegrationConfigured: boolean; configuredChainId: string | null; storedReceiptCount: number; note: string };
 type Readiness = { status: string; database: string };
+type VaultStatus = { configured: boolean; connected: boolean; cluster: string | null; pendingCount: number; approvedCount: number };
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1").replace(/\/$/, "");
 const apiOrigin = apiBase.replace(/\/api\/v1\/?$/, "");
@@ -36,23 +37,26 @@ export default function AdminDashboardPage() {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [chain, setChain] = useState<ChainStatus | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [vault, setVault] = useState<VaultStatus | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
-    const [overviewResult, auditResult, chainResult, readyResult] = await Promise.allSettled([
+    const [overviewResult, auditResult, chainResult, readyResult, vaultResult] = await Promise.allSettled([
       readJson<Overview>(`${apiBase}/admin/overview`),
       readJson<{ entries: AuditEntry[] }>(`${apiBase}/admin/audit?limit=6`),
       readJson<ChainStatus>(`${apiBase}/admin/blockchain`),
       readJson<Readiness>(`${apiOrigin}/ready`, false),
+      readJson<VaultStatus>(`${apiBase}/admin/vault/status`),
     ]);
     if (overviewResult.status === "fulfilled") setOverview(overviewResult.value);
     else setError(overviewResult.reason instanceof Error ? overviewResult.reason.message : "Registry counts are unavailable.");
     if (auditResult.status === "fulfilled") setAudit(auditResult.value.entries || []);
     if (chainResult.status === "fulfilled") setChain(chainResult.value);
     if (readyResult.status === "fulfilled") setReadiness(readyResult.value);
+    if (vaultResult.status === "fulfilled") setVault(vaultResult.value);
     setLoading(false);
   }, []);
 
@@ -99,11 +103,94 @@ export default function AdminDashboardPage() {
       </article>
 
       <aside className="space-y-4">
-        <article className="rounded-2xl border border-forest/10 bg-white p-5 shadow-sm"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-50 text-sky-800"><Activity className="h-5 w-5"/></span><div><h2 className="font-bold">Runtime status</h2><p className="text-xs text-forest/55">Readiness endpoint</p></div></div><div className="mt-5 flex items-center justify-between border-t border-forest/10 pt-4 text-sm"><span className="text-forest/65">Database</span><b>{readiness?.database || "Checking…"}</b></div><div className="mt-3 flex items-center justify-between text-sm"><span className="text-forest/65">Core API</span><b>{readiness?.status || "Checking…"}</b></div></article>
-        <article className="rounded-2xl border border-forest/10 bg-white p-5 shadow-sm"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-800"><Award className="h-5 w-5"/></span><div><h2 className="font-bold">Chain evidence</h2><p className="text-xs text-forest/55">Stored receipts and configuration</p></div></div><div className="mt-5 flex items-center justify-between border-t border-forest/10 pt-4 text-sm"><span className="text-forest/65">Write integration</span><b>{chain ? chain.writeIntegrationConfigured ? "Configured" : "Not configured" : "Checking…"}</b></div><div className="mt-3 flex items-center justify-between text-sm"><span className="text-forest/65">Stored receipts</span><b>{chain?.storedReceiptCount ?? "—"}</b></div>{chain?.configuredChainId && <div className="mt-2 text-xs text-forest/55">Configured chain ID: {chain.configuredChainId}</div>}<Link href="/admin/blockchain" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-forest hover:text-ochre">Inspect chain records <ArrowRight className="h-3.5 w-3.5"/></Link></article>
+        <article className="rounded-2xl border border-forest/10 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-800">
+              <Database className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="font-bold">MongoDB Atlas Vault</h2>
+              <p className="text-xs text-forest/55">University Approval Gate</p>
+            </div>
+          </div>
+          <div className="mt-5 flex items-center justify-between border-t border-forest/10 pt-4 text-sm">
+            <span className="text-forest/65">Cluster Connection</span>
+            <b className={vault?.connected ? "text-emerald-700" : vault?.configured ? "text-amber-700" : "text-forest/50"}>
+              {vault?.connected ? "Connected" : vault?.configured ? "Awaiting Ping" : "Config in .env"}
+            </b>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-forest/65">Pending Approvals</span>
+            <b className="text-amber-700 font-extrabold">{vault?.pendingCount ?? 0}</b>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-forest/65">Vaulted in Atlas</span>
+            <b>{vault?.approvedCount ?? 0}</b>
+          </div>
+          <Link href="/admin/vault" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-forest hover:text-ochre">
+            Open Approval & Vault Gate <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </article>
+
+        <article className="rounded-2xl border border-forest/10 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-50 text-sky-800">
+              <Activity className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="font-bold">Runtime status</h2>
+              <p className="text-xs text-forest/55">Readiness endpoint</p>
+            </div>
+          </div>
+          <div className="mt-5 flex items-center justify-between border-t border-forest/10 pt-4 text-sm">
+            <span className="text-forest/65">Database</span>
+            <b>{readiness?.database || "Checking…"}</b>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-forest/65">Core API</span>
+            <b>{readiness?.status || "Checking…"}</b>
+          </div>
+        </article>
+
+        <article className="rounded-2xl border border-forest/10 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-800">
+              <Award className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="font-bold">Chain evidence</h2>
+              <p className="text-xs text-forest/55">Stored receipts and configuration</p>
+            </div>
+          </div>
+          <div className="mt-5 flex items-center justify-between border-t border-forest/10 pt-4 text-sm">
+            <span className="text-forest/65">Write integration</span>
+            <b>{chain ? chain.writeIntegrationConfigured ? "Configured" : "Not configured" : "Checking…"}</b>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-forest/65">Stored receipts</span>
+            <b>{chain?.storedReceiptCount ?? "—"}</b>
+          </div>
+          {chain?.configuredChainId && <div className="mt-2 text-xs text-forest/55">Configured chain ID: {chain.configuredChainId}</div>}
+          <Link href="/admin/blockchain" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-forest hover:text-ochre">
+            Inspect chain records <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </article>
       </aside>
     </section>
 
-    <nav aria-label="Admin shortcuts" className="grid gap-3 sm:grid-cols-3"><Link href="/admin/universities" className="rounded-xl border border-forest/10 bg-white p-4 text-sm font-bold shadow-sm transition hover:border-forest/30">Institution directory <span className="mt-1 block text-xs font-normal text-forest/55">Review registered institutions</span></Link><Link href="/admin/companies" className="rounded-xl border border-forest/10 bg-white p-4 text-sm font-bold shadow-sm transition hover:border-forest/30">Company directory <span className="mt-1 block text-xs font-normal text-forest/55">Review company accounts</span></Link><Link href="/admin/audit" className="rounded-xl border border-forest/10 bg-white p-4 text-sm font-bold shadow-sm transition hover:border-forest/30">Audit history <span className="mt-1 block text-xs font-normal text-forest/55">Search and export recorded events</span></Link></nav>
+    <nav aria-label="Admin shortcuts" className="grid gap-3 sm:grid-cols-4">
+      <Link href="/admin/vault" className="rounded-xl border border-emerald-600/20 bg-emerald-50/50 p-4 text-sm font-bold shadow-sm transition hover:border-emerald-600/40">
+        MongoDB Atlas Vault <span className="mt-1 block text-xs font-normal text-forest/65">Review and approve university submissions</span>
+      </Link>
+      <Link href="/admin/universities" className="rounded-xl border border-forest/10 bg-white p-4 text-sm font-bold shadow-sm transition hover:border-forest/30">
+        Institution directory <span className="mt-1 block text-xs font-normal text-forest/55">Review registered institutions</span>
+      </Link>
+      <Link href="/admin/companies" className="rounded-xl border border-forest/10 bg-white p-4 text-sm font-bold shadow-sm transition hover:border-forest/30">
+        Company directory <span className="mt-1 block text-xs font-normal text-forest/55">Review company accounts</span>
+      </Link>
+      <Link href="/admin/audit" className="rounded-xl border border-forest/10 bg-white p-4 text-sm font-bold shadow-sm transition hover:border-forest/30">
+        Audit history <span className="mt-1 block text-xs font-normal text-forest/55">Search and export recorded events</span>
+      </Link>
+    </nav>
   </main>;
 }

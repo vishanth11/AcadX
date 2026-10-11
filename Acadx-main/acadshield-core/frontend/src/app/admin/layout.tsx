@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   Lock,
+  Database,
 } from "lucide-react";
 
 export default function AdminAppLayout({
@@ -40,6 +41,7 @@ export default function AdminAppLayout({
 
   const navItems = [
     { label: "Platform Overview", href: "/admin", icon: ShieldAlert },
+    { label: "MongoDB Atlas Vault", href: "/admin/vault", icon: Database },
     { label: "Institution directory", href: "/admin/universities", icon: Building2 },
     { label: "Company directory", href: "/admin/companies", icon: Briefcase },
     { label: "Students (unavailable)", href: "/admin/students", icon: Users },
